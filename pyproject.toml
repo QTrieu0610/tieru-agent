@@ -1,0 +1,129 @@
+[project]
+name = "tieru-agent"
+version = "0.2.0"
+description = "Tieru, a transparent local-first personal AI agent with a readable harness, loop, memory, and eval stack."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Vo Quang Trieu" }]
+maintainers = [{ name = "Vo Quang Trieu" }]
+requires-python = ">=3.11"
+keywords = ["ai-agent", "llm", "agent-framework", "local-first", "llmops", "memory", "eval"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "anthropic>=0.40",   # anthropic wire format: Anthropic, Kimi, GLM, MiniMax
+    "openai>=1.50",      # openai wire format: OpenAI, Gemini, DeepSeek (and embeddings)
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "rich>=13.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/QTrieu0610/tieru-agent"
+Repository = "https://github.com/QTrieu0610/tieru-agent"
+Issues = "https://github.com/QTrieu0610/tieru-agent/issues"
+Changelog = "https://github.com/QTrieu0610/tieru-agent/releases"
+
+[project.scripts]
+tieru = "tieru.__main__:main"
+
+[project.optional-dependencies]
+# Eval pillar: LLM-as-judge (deterministic evals need only pytest)
+eval = [
+    "pytest>=8.0",
+    "deepeval>=2.0",
+]
+# LLM-Ops pillar: local trace dashboard (traces also always land in traces/*.jsonl)
+tracing = [
+    "arize-phoenix>=7.0",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp>=1.27",
+]
+# Optional gateway: message your laptop from your phone
+telegram = [
+    "python-telegram-bot>=21.0",
+]
+# Optional write-through target for create_event; the local SQLite/ICS mock
+# remains the default and source of truth.
+gcal = [
+    "google-api-python-client>=2.0",
+    "google-auth>=2.0",
+    "google-auth-httplib2>=0.2",
+    "httplib2>=0.22",
+    "google-auth-oauthlib>=1.0",
+]
+# Optional gateway: message Tieru from Discord
+discord = [
+    "discord.py>=2.4",
+]
+# Optional gateway: WhatsApp via Meta Cloud API
+whatsapp = [
+    "httpx>=0.25",
+]
+# Optional gateway: talk to your laptop.
+voice = [
+    "faster-whisper>=1.0",
+    "sounddevice>=0.4",
+    "numpy>=1.24",
+]
+voice-neural = [
+    "kokoro>=0.9",
+    "soundfile>=0.12",
+]
+# Optional semantic-memory upgrade path: Supabase pgvector
+supabase = [
+    "supabase>=2.0",
+]
+# Optional episodic-memory backend: Notion database
+notion = [
+    "notion-client>=2.5",
+]
+# Optional: connect MCP servers (.tieru/mcp.json)
+mcp = [
+    "mcp>=1.0",
+]
+# Optional restricted browser tools.
+browser = [
+    "playwright>=1.48",
+]
+dev = [
+    "pytest>=8.0",
+    "build>=1.2,<2",
+    "twine>=5,<7",
+    "ruff==0.16.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "docs", "examples", "pi-pokedex",
+    ".claude", ".agents", ".pi", ".deepeval", ".github",
+    "template_Agent.md",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["tieru"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "tieru/skills"
+"tieru/tieru.example.yaml" = "tieru/tieru.example.yaml"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+ignore = [
+    "BLE001",
+    "DTZ001", "DTZ005", "DTZ011",
+    "S110",
+    "RUF100",
+]

@@ -1,0 +1,56 @@
+version: 1
+active_profile: default
+
+# Long-term memory is explicit by default. "consolidate" opts into model-written
+# summaries/facts; FTS5 remains available even when semantic retrieval is enabled.
+memory_write_policy: explicit
+memory_max_records: 10000
+
+# One centralized gate resolves tool -> capability -> defaults. Unknown and
+# unclassified tools are always denied.
+tool_permissions:
+  defaults:
+    read_only: allow
+    side_effect: confirm
+  capabilities:
+    process.execute: deny
+
+# Optional: install tieru-agent[browser] and a Playwright Chromium binary first.
+browser_enabled: false
+browser_allowed_domains: []
+browser_allow_local_fixture: false
+browser_timeout_seconds: 15
+browser_max_actions: 20
+
+# Secrets never belong here. Set the provider's api_key_env in .env instead.
+providers:
+  ollama:
+    protocol: openai
+    base_url: http://127.0.0.1:11434/v1
+    api_key_env: ""
+    keyless: true
+    default_model: gemma4:e2b
+    default_small_model: gemma4:e2b
+
+profiles:
+  default:
+    main:
+      provider: anthropic
+      model: claude-sonnet-5
+    small:
+      provider: anthropic
+      model: claude-haiku-4-5-20251001
+    judge:
+      provider: openai
+      model: gpt-5.3-chat-latest
+
+  ollama-gemma4-e2b:
+    main:
+      provider: ollama
+      model: gemma4:e2b
+    small:
+      provider: ollama
+      model: gemma4:e2b
+    judge:
+      provider: ollama
+      model: gemma4:e2b
