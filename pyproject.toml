@@ -1,13 +1,13 @@
 [project]
 name = "tieru-agent"
-version = "0.2.0"
-description = "Tieru, a transparent local-first personal AI agent with a readable harness, loop, memory, and eval stack."
+version = "0.3.0b1"
+description = "Tieru is a local-first personal AI runtime for user-owned memory, model choice, tools, permissions, and evaluation."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Vo Quang Trieu" }]
 maintainers = [{ name = "Vo Quang Trieu" }]
 requires-python = ">=3.11"
-keywords = ["ai-agent", "llm", "agent-framework", "local-first", "llmops", "memory", "eval"]
+keywords = ["personal-ai", "agent-runtime", "llm", "local-first", "model-routing", "memory", "mcp", "eval"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -95,7 +95,7 @@ browser = [
 dev = [
     "pytest>=8.0",
     "build>=1.2,<2",
-    "twine>=5,<7",
+    "twine>=7,<8",
     "ruff==0.16.0",
 ]
 
@@ -105,10 +105,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-    "docs", "examples", "pi-pokedex",
+    "docs", "pi-pokedex",
     ".claude", ".agents", ".pi", ".deepeval", ".github",
     "template_Agent.md",
 ]
+
+[tool.hatch.build.targets.sdist.force-include]
+"examples" = "examples"
 
 [tool.hatch.build.targets.wheel]
 packages = ["tieru"]

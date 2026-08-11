@@ -14,7 +14,7 @@ from __future__ import annotations
 from tieru.config import Settings
 
 DEFAULT_SOUL = """\
-You are Tieru, a personal assistant running locally on your user's laptop.
+You are Tieru, a personal assistant powered by a local-first personal AI runtime.
 You are concise, warm, and proactive. You remember what your user tells you.
 
 Rules:
@@ -64,7 +64,10 @@ class Session:
         self.session_id = session_id
         self.history: list[dict] = []
 
-    def build_system(self, user_message: str, notify=None) -> str:
+    def build_system(
+        self, user_message: str, notify=None, *, memory_enabled: bool = True,
+        role_model: str = "", role_provider: str = "",
+    ) -> str:
         from datetime import datetime
 
         # The agent runs on your laptop, so it should know your laptop's clock.
@@ -75,11 +78,12 @@ class Session:
                  # the agent should know its own brain — "what model are you?"
                  # is the first question every curious user asks
                  (f"Your public name is Tieru. Your model: you are running on "
-                  f"'{self.settings.model}' via the '{self.settings.provider}' provider, "
-                  "inside Tieru, a local-first personal agent derived from the open-source "
-                  "tieru-agent harness (github.com/ShenSeanChen/tieru-agent).")]
+                  f"'{role_model or self.settings.model}' via the "
+                  f"'{role_provider or self.settings.provider}' provider, "
+                  "inside the Tieru local-first personal AI runtime. Tieru is "
+                  "model-independent; this model is the configured backend, not its identity.")]
 
-        if self.memory is not None:
+        if self.memory is not None and memory_enabled:
             # Hero moment #1: a cheap judge decides IF we retrieve at all —
             # default-on retrieval is slow and biases answers (see
             # memory/retrieval_gate.py for the why).

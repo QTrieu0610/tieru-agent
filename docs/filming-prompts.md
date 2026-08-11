@@ -1,6 +1,6 @@
 # Filming prompts — copy-paste list
 
-> **Historical upstream filming material.** These prompts and tieru/pi shooting
+> **Historical upstream filming material.** These prompts and Waku/pi shooting
 > notes are preserved as recorded. They are not current Tieru product claims or
 > validation results.
 
@@ -63,7 +63,7 @@ Book a catch-up with Alex on Friday
 Build me a Kanto starter team around Pikachu: search current competitive picks for a balanced six, remember that Pikachu is my starter, and schedule two team-training sessions this week
 ```
 ```
-Search for the result of the Spain vs Argentina World Cup final, remember who won, and draft a message to Raj about watching the highlights together
+Search for the result of the Spain vs Argentina World Cup final, remember who won, and draft a message to Alex about watching the highlights together
 ```
 > Each needs 3+ tool calls: search + remember + schedule/message.
 

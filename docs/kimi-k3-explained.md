@@ -1,6 +1,6 @@
 # Kimi K3, explained for a stats brain
 
-> **Historical upstream explainer.** This companion was written for the tieru-era
+> **Historical upstream explainer.** This companion was written for the Waku-era
 > whiteboard and demo. Product references and dated model claims are retained for
 > provenance, not presented as current Tieru defaults or validation.
 

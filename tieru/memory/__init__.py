@@ -1,8 +1,9 @@
-"""Memory facade — the three pillars behind one small interface.
+"""Tieru Memory facade — four additive capabilities behind one interface.
 
     procedural  SKILL.md files      how to act
     semantic    facts table (FTS5)  what is durably true
     episodic    episodes table      what happened, when
+    graph       typed relationships how entities connect and change
 
 Plus the two agents that manage them:
     retrieval_gate   decides IF a turn needs memory   (hero moment #1)
@@ -12,6 +13,7 @@ Plus the two agents that manage them:
 from __future__ import annotations
 
 import sqlite3
+import time
 from pathlib import Path
 
 import anthropic
@@ -19,6 +21,7 @@ import anthropic
 from tieru.config import Settings
 from tieru.memory import consolidation, retrieval_gate
 from tieru.memory.episodic.store import SqliteEpisodeStore
+from tieru.memory.graph import GraphService, GraphStore
 from tieru.memory.personal import PersonalMemoryStore, redact_secrets
 from tieru.memory.procedural.loader import SkillLoader
 from tieru.memory.semantic.store import SqliteFactStore
@@ -52,12 +55,22 @@ class Memory:
         self.conn = conn
         self.settings = settings
         self.client = client
+        small = settings.role("small")
+        self.model = small.model
+        self.provider = small.provider
         self.store = PersonalMemoryStore(conn, settings.memory_max_records)
         self.facts = self._make_fact_store(conn, settings, self.store)
         self.episodes = episode_store if episode_store is not None else self._make_episode_store(
             conn, settings, self.store
         )
         self.skills = SkillLoader([*bundled_skill_dirs(), settings.home / "skills"])
+        self.graph = GraphService(GraphStore(conn))
+
+    def set_model(self, client, model: str, provider: str) -> None:
+        """Use the turn's sticky Fabric target for memory-side model calls."""
+        self.client = client
+        self.model = model
+        self.provider = provider
 
     @staticmethod
     def _make_fact_store(conn, settings, unified=None):
@@ -77,15 +90,32 @@ class Memory:
 
     # ---- retrieval (gated — see retrieval_gate.py for why)
     def gated_retrieve(self, message: str, notify=None) -> str:
+        graph_context = self.graph.retrieve_context(message)
+        if graph_context:
+            if notify:
+                notify("gate", {"decision": "retrieve", "reason": "exact Memory Graph match"})
+            return graph_context
+        started = time.perf_counter()
+        if notify:
+            notify("model_call_started", {"role": "small", "model": self.model,
+                                          "provider": self.provider, "purpose": "memory_gate"})
         retrieve, query, reason = retrieval_gate.should_retrieve(
-            self.client, self.settings.small_model, message
+            self.client, self.model, message
         )
         if notify:
+            notify("model_call_completed", {"role": "small", "model": self.model,
+                                            "provider": self.provider,
+                                            "purpose": "memory_gate",
+                                            "duration_ms": int((time.perf_counter() - started) * 1000),
+                                            "stop_reason": "decision"})
             notify("gate", {"decision": "retrieve" if retrieve else "skip", "reason": reason})
         if not retrieve:
             return ""
         found = self.facts.search(query, self.settings.retrieval_top_k)
         found += self.episodes.search(query, top_k=3)
+        if notify:
+            notify("memory_retrieval", {"count": len(found),
+                                        "source": ["facts", "episodes"]})
         return "\n".join(found)
 
     # ---- procedural
@@ -167,11 +197,13 @@ class Memory:
         eps = self.conn.execute(
             "SELECT happened_at, summary FROM episodes ORDER BY happened_at DESC, id DESC"
         ).fetchall()
+        graph_relations = self.graph.store.find_relations(limit=1000)
         lines = [
             "# Tieru memory",
             "",
             ("_A human-readable mirror of what Tieru remembers. The source of truth is "
-            "`state.db` (the `facts` and `episodes` tables, keyword-searchable via FTS5); "
+            "`state.db` (facts, episodes, and Memory Graph tables; text memory remains "
+            "keyword-searchable via FTS5); "
             "this file is regenerated after every turn._"),
             "",
             f"## Facts — semantic memory ({len(facts)})",
@@ -185,6 +217,24 @@ class Memory:
         lines += [
             f"- **{e['happened_at']}** — {redact_secrets(e['summary'])}" for e in eps
         ] or ["_none yet_"]
+        lines += ["", f"## Memory Graph ({len(graph_relations)} relations)", ""]
+        if graph_relations:
+            for relation in graph_relations:
+                subject = self.graph.store.get_entity(relation.subject_id)
+                obj = self.graph.store.get_entity(relation.object_id)
+                validity = ""
+                if relation.valid_from or relation.valid_to:
+                    validity = f"; valid {relation.valid_from or '…'} to {relation.valid_to or '…'}"
+                lines.append(
+                    f"- **{redact_secrets(subject.canonical_name)}** —{relation.predicate}→ "
+                    f"**{redact_secrets(obj.canonical_name)}** "
+                    f"(status: {relation.status}; confidence: {relation.confidence:g}; "
+                    f"importance: {relation.importance:g}; source: "
+                    f"{redact_secrets(relation.source_type)}:{redact_secrets(relation.source_ref)}"
+                    f"{validity})"
+                )
+        else:
+            lines.append("_none yet_")
         (self.settings.home / "MEMORY.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def maybe_consolidate(self, notify=None) -> None:
@@ -193,7 +243,7 @@ class Memory:
         new_facts = consolidation.consolidate_if_due(
             self.conn,
             self.client,
-            self.settings.small_model,
+            self.model,
             self.settings.consolidate_every,
             self.facts,
             self.episodes,

@@ -1,7 +1,7 @@
 # pi — the whole walkthrough  /  完整讲解
 
 > **Historical upstream tutorial and filming material.** This walkthrough pins a
-> dated pi/tieru setup. Its names, commands, paths, and live-test claims are kept
+> dated pi/Waku setup. Its names, commands, paths, and live-test claims are kept
 > for provenance; they are not current Tieru feature or validation claims.
 
 **The one file to film from.** Follows the chart left→right, top→bottom. For every

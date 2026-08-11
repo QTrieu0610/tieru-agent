@@ -15,6 +15,85 @@ tool_permissions:
   capabilities:
     process.execute: deny
 
+# M7 Trust Kernel policy. Existing tool_permissions remain supported and are
+# normalized fail-safely. Explicit deny wins over every allow or approval.
+trust:
+  default: deny
+  capabilities:
+    local_read:
+      mode: allow
+    local_write:
+      mode: confirm
+    network_read: allow
+    external_write: confirm
+    process_execution: deny
+    browser_automation: confirm
+    destructive: deny
+
+# M8 Replay is local, read-only observability in state.db. Retention deletes
+# Replay telemetry only; it never deletes chat history or Tieru Memory.
+replay_max_runs: 500
+replay_max_age_days: 30
+replay_max_event_payload_bytes: 8192
+replay_max_tool_output_bytes: 2048
+
+# M10 Shadow is passive and disabled by default for existing users. When
+# explicitly enabled it groups only completed Forge-compatible Replay runs;
+# it never executes workflows, creates active skills, or changes permissions.
+shadow_enabled: false
+shadow_min_occurrences: 3
+shadow_max_evidence_runs: 5
+shadow_suggestions: true
+shadow_snooze_days: 7
+shadow_stale_days: 30
+
+# M12 Model Fabric v2 preserves M11 QUICK/STANDARD/AGENT/DEEP modes, then
+# selects among explicitly enabled candidates. Fabric remains opt-in and
+# local_first; the presence of a cloud API key alone does not enable cloud use.
+fabric:
+  enabled: false
+  default_mode: standard
+  use_small_classifier: false
+  routing_policy: local_first
+  availability_ttl_seconds: 60
+  min_history_samples: 5
+  max_fallbacks: 1
+  quick_max_tokens: 512
+  quick_max_iterations: 1
+  quick_history_turns: 2
+  agent_max_tokens: 4096
+  agent_max_iterations: 10
+  deep_max_tokens: 12288
+  deep_max_iterations: 12
+  deep_history_turns: 24
+  deep_verification: true
+  weights:
+    capability: 0.35
+    preference: 0.20
+    performance: 0.20
+    latency: 0.15
+    cost: 0.10
+  models:
+    local-main:
+      provider: ollama
+      model: gemma4:e2b
+      local: true
+      capabilities:
+        text: true
+        tool_calling: true
+        long_context: true
+      cost_tier: free   # relative API-cost tier, not total hardware cost
+      latency_tier: medium
+      preference: 1.0
+    # Cloud candidates require both explicit enablement here and credentials.
+    # cloud-main:
+    #   provider: anthropic
+    #   model: your-configured-model
+    #   local: false
+    #   capabilities: {text: true, tool_calling: true}
+    #   cost_tier: medium
+    #   preference: 0.5
+
 # Optional: install tieru-agent[browser] and a Playwright Chromium binary first.
 browser_enabled: false
 browser_allowed_domains: []
@@ -24,6 +103,8 @@ browser_max_actions: 20
 
 # Secrets never belong here. Set the provider's api_key_env in .env instead.
 providers:
+  # Verified local backend target. Gemma is a replaceable model profile, not
+  # Tieru's product identity; any installed Ollama tag can be configured here.
   ollama:
     protocol: openai
     base_url: http://127.0.0.1:11434/v1

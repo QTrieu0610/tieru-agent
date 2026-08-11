@@ -1,0 +1,42 @@
+version: 1
+active_profile: example-local-plus-cloud
+profiles:
+  example-local-plus-cloud:
+    main:
+      provider: ollama
+      model: gemma4:e2b
+    small:
+      provider: ollama
+      model: gemma4:e2b
+    judge:
+      provider: ollama
+      model: gemma4:e2b
+fabric:
+  enabled: true
+  routing_policy: local_first
+  models:
+    local-main:
+      provider: ollama
+      model: gemma4:e2b
+      local: true
+      roles: [main, small, judge]
+      capabilities:
+        text: true
+        tool_calling: true
+        long_context: true
+      cost_tier: free
+      preference: 1.0
+    explicit-cloud-placeholder:
+      provider: anthropic
+      model: YOUR_CLOUD_MODEL_ID
+      local: false
+      enabled: true
+      roles: [main, small]
+      capabilities:
+        text: true
+        tool_calling: unknown
+        long_context: unknown
+      cost_tier: unknown
+      preference: 0.5
+shadow_enabled: false
+browser_enabled: false

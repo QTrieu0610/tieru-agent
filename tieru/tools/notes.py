@@ -52,4 +52,7 @@ def make_tool(store: sqlite3.Connection | object) -> Tool:
         read_only=False,
         capabilities=("memory.write",),
         default_policy="confirm",
+        operation="save",
+        target_arg="subject",
+        resource_type="memory",
     )

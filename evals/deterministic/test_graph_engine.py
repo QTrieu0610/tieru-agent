@@ -8,7 +8,7 @@ renders from.
 
 from __future__ import annotations
 
-import time
+from threading import Barrier
 
 import pytest
 
@@ -44,26 +44,26 @@ def test_linear_topology_runs_in_edge_order():
 
 def test_fanout_runs_in_parallel_and_fanin_waits_for_all():
     g = Graph("fan")
+    fanout = Barrier(3)
 
-    def slow(key):
+    def concurrent(key):
         def fn(state):
-            time.sleep(0.15)
+            # A serial engine cannot release this barrier; wall-clock thresholds
+            # are too sensitive to scheduler load on shared CI runners.
+            fanout.wait(timeout=2)
             return {key: key}
         return fn
 
     for key in ("x", "y", "z"):
-        g.add_node(Node(key, slow(key)))
+        g.add_node(Node(key, concurrent(key)))
         g.add_edge(START, key)
     g.add_node(Node("join", lambda s: {"joined": s["x"] + s["y"] + s["z"]}))
     for key in ("x", "y", "z"):
         g.add_edge(key, "join")
     g.add_edge("join", END)
 
-    t0 = time.perf_counter()
     state = run_graph(g, {})
-    elapsed = time.perf_counter() - t0
     assert state["joined"] == "xyz"          # fan-in saw all three keys
-    assert elapsed < 0.35                    # 3 x 0.15s ran together, not in series
 
 
 def routed_graph() -> Graph:

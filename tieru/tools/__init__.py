@@ -17,7 +17,19 @@ def build_registry(
     memory=None,
     approval_handler: ApprovalHandler | None = None,
 ) -> ToolRegistry:
-    registry = ToolRegistry(settings.tool_permissions, approval_handler)
+    registry = ToolRegistry(
+        settings.tool_permissions,
+        approval_handler,
+        trust_policy=settings.trust_policy,
+        trust_context={
+            "base_path": str(settings.home.resolve().parent),
+            "path_aliases": {
+                "home": str(settings.home.resolve()),
+                "workspace": str((settings.home / "workspace").resolve()),
+            },
+            "browser_domains": list(settings.browser_allowed_domains),
+        },
+    )
     registry.register(
         calendar.make_tool(
             conn,
@@ -86,7 +98,11 @@ def build_registry(
         try:
             from tieru.tools.mcp_client import MCPBridge
 
-            bridge = MCPBridge(mcp_config)
+            bridge = MCPBridge(
+                mcp_config,
+                kernel=registry.kernel,
+                max_output_bytes=settings.replay_max_tool_output_bytes,
+            )
             for t in bridge.start():
                 registry.register(t)
             registry.mcp_bridge = bridge  # so Tieru.close() can stop the servers

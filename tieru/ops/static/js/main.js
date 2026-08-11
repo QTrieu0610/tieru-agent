@@ -3,8 +3,14 @@
 // step, no modules). Load order + rules: static/README.md.
 
 let activeView = null, activeSub = null;
-const TITLES = {chat:"Chat & watch", ops:"LLM Ops",
+const TITLES = {fabric:"Model Fabric v2 - policy-first model selection",
+                shadow:"Tieru Shadow - passive repeated-workflow suggestions",
+                capsule:"Tieru Capsule - your identity moves with you",
+                forge:"Skill Forge - reviewed Replay to procedural skill",
+                chat:"Chat & watch", ops:"LLM Ops",
                 graph:"Graph workflows — structure around the loop",
+                trust:"Trust Kernel — authorization outside the model",
+                replay:"Tieru Replay — inspect observable execution",
                 compare:"Arena — race models through the real loop",
                 database:"Database — everything Tieru stores (state.db)"};
 function render(){
@@ -18,7 +24,7 @@ function render(){
   if (view === "overview" || view === "graph"){
     // don't rebuild mid-animation or the glowing SVG gets wiped
     if (activeView !== view || !animating){ document.getElementById("view").innerHTML = VIEWS[view](D); }
-  } else if ((view === "memory" || view === "settings" || view === "database" || view === "compare") && editing && !subChanged){
+  } else if ((view === "memory" || view === "settings" || view === "database" || view === "compare" || view === "capsule") && editing && !subChanged){
     // don't wipe an in-progress edit on the 5s refresh — but DO switch sub-tabs
   } else {
     editing = false;
@@ -37,8 +43,16 @@ function render(){
   document.getElementById("n-loop").textContent = D.stats.turns;
   document.getElementById("n-graph").textContent =
     (D.graph && (D.graph.stats.quick + D.graph.stats.full)) || "";
+  document.getElementById("n-fabric").textContent =
+    (D.fabric && D.fabric.recent_routes && D.fabric.recent_routes.length) || "";
   document.getElementById("n-mem").textContent = D.facts.length + D.episodes.length;
   document.getElementById("n-tools").textContent = D.calendar.length + D.outbox.length;
+  document.getElementById("n-forge").textContent =
+    (D.forge && D.forge.drafts && D.forge.drafts.length) || "";
+  document.getElementById("n-shadow").textContent =
+    (D.shadow && D.shadow.status && D.shadow.status.suggestion_count) || "";
+  document.getElementById("n-replay").textContent =
+    (D.replay && D.replay.runs && D.replay.runs.length) || "";
   document.getElementById("n-db").textContent = (D.db && D.db.all_tables.length) || "";
   document.getElementById("n-ops").textContent = D.stats.tool_errors || (D.eval_report ? "" : "!");
 }

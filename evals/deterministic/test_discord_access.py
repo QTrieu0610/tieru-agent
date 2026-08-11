@@ -50,10 +50,9 @@ def test_unconfigured_bot_ignores_every_server_channel():
     assert policy(channel_id=OPEN_CHANNEL) is False
 
 
-def test_unconfigured_bot_still_answers_dms():
-    """The single-user default has to stay usable, or people will disable the
-    guard rather than configure it."""
-    assert policy(is_dm=True) is True
+def test_unconfigured_bot_denies_dms():
+    """A configured token is not sender authorization; empty means nobody."""
+    assert policy(is_dm=True) is False
 
 
 # ---------- opening it up, one deliberate step at a time
@@ -62,18 +61,20 @@ def test_unconfigured_bot_still_answers_dms():
 def test_an_allowlisted_channel_answers_only_on_a_mention():
     """Opting a channel in must not turn the bot into a firehose in that channel.
     Passive listening is what made this expensive in the first place."""
-    allowed = {"allowed_channels": {OPEN_CHANNEL}, "channel_id": OPEN_CHANNEL}
+    allowed = {"allowed_users": {ME}, "author_id": ME,
+               "allowed_channels": {OPEN_CHANNEL}, "channel_id": OPEN_CHANNEL}
     assert policy(**allowed, mentioned=True) is True
     assert policy(**allowed, mentioned=False) is False
 
 
 def test_require_mention_can_be_switched_off_but_only_explicitly():
-    assert policy(allowed_channels={OPEN_CHANNEL}, channel_id=OPEN_CHANNEL,
-                  mentioned=False, require_mention=False) is True
+    assert policy(allowed_users={ME}, author_id=ME, allowed_channels={OPEN_CHANNEL},
+                  channel_id=OPEN_CHANNEL, mentioned=False, require_mention=False) is True
 
 
 def test_allowlisting_one_channel_does_not_open_the_others():
-    assert policy(allowed_channels={OPEN_CHANNEL}, channel_id=BUSY_CHANNEL) is False
+    assert policy(allowed_users={ME}, author_id=ME, allowed_channels={OPEN_CHANNEL},
+                  channel_id=BUSY_CHANNEL) is False
 
 
 def test_a_user_allowlist_gates_dms_too():
@@ -81,6 +82,10 @@ def test_a_user_allowlist_gates_dms_too():
     'restricted to me' would still leave DMs open to anyone who finds it."""
     assert policy(is_dm=True, allowed_users={ME}, author_id=ME) is True
     assert policy(is_dm=True, allowed_users={ME}, author_id=STRANGER) is False
+
+
+def test_channel_allowlist_without_a_user_allowlist_stays_locked():
+    assert policy(allowed_channels={OPEN_CHANNEL}, channel_id=OPEN_CHANNEL) is False
 
 
 def test_both_allowlists_must_pass_in_a_channel():

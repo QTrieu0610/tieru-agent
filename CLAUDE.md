@@ -1,34 +1,36 @@
 # Tieru — working conventions
 
-**Tieru** — a local-first personal assistant demonstrating the four pillars behind every
-serious agent: Harness, Loop, Memory, and Eval/LLM-Ops. It began as a teaching repo you
-could read in an afternoon. The bar for every change: **clear, honest code a newcomer can
-follow** — each pillar legible on its own. The project will get bigger; it must never get
-muddier. New scope is welcome when it stays self-contained, tested, and readable; complexity
-for its own sake is not.
+**Tieru** — a local-first personal AI runtime built around Memory, Skills, Models,
+Trust, Replay foundations, and Tools. The bar for every change is **clear, honest
+code a newcomer can follow**: each subsystem stays legible on its own. New scope
+is welcome when it is self-contained, tested, and readable; complexity for its
+own sake is not.
 
 The canonical technical contracts are the `tieru-agent` distribution, `tieru` package and command, `TIERU_*` environment variables, and `.tieru` runtime state. Deprecated Waku contracts remain compatibility fallbacks only.
 
-## Architecture map (file ↔ diagram box)
+## Architecture map (file ↔ subsystem)
 
-- `tieru/gateway/` — cli, voice (wake word), telegram. Gateways only move text.
-- `tieru/runtime/session.py` — working memory assembly (SOUL.md + memory + history)
-- `tieru/loop/agent.py` — THE loop; `loop/models.py` — pluggable providers, 2 wire formats
-- `tieru/graph/` — engine + node factories + `workflows/` (triage) — opt-in structure
-  AROUND the loop (the loop never changes; a graph node can BE a loop turn); every
-  failure fails open to the plain loop
-- `tieru/tools/` — create_event / save_note / send_message (flagship task only)
-- `tieru/memory/` — semantic (FTS5) / episodic / procedural (SKILL.md) +
-  `retrieval_gate.py` (hero 1) + `consolidation.py` (every N exchanges)
-- `tieru/ops/` — tracing (JSONL + OTel), dashboard (localhost:7777), release_gate,
-  `compare_history.py` (the Compare arena's own JSONL scoreboard — never state.db)
-- `evals/deterministic/` (0/1, pytest) vs `evals/judge/` (DeepEval, scored) — never mix
-- Runtime state lives in `.tieru/` (state.db, calendar.ics, outbox/, traces/) — gitignored
+- `tieru/app.py` — application assembly and per-turn runtime lifecycle.
+- `tieru/gateway/` — terminal, voice, Telegram, Discord, and WhatsApp text boundaries.
+- `tieru/runtime/session.py` — bounded working-context assembly.
+- `tieru/loop/` — agent loop plus provider adapters and `ModelRouter`.
+- `tieru/memory/` — semantic, episodic, procedural, and graph memory.
+- `tieru/trust/` — centralized capability, risk, scope, and approval decisions.
+- `tieru/replay/` — normalized local run/event inspection; JSONL tracing remains separate.
+- `tieru/forge/` and `tieru/shadow/` — reviewed skill drafting and disabled-by-default
+  repeated-workflow suggestions.
+- `tieru/fabric/` — opt-in execution modes and policy-first configured model selection.
+- `tieru/capsule/` — bounded, integrity-checked offline export/import.
+- `tieru/tools/` — classified built-ins, optional MCP, and restricted browser tools.
+- `tieru/graph/` — opt-in workflows around the unchanged agent loop.
+- `tieru/ops/` — local dashboard, tracing, approvals, and release verification.
+- `evals/deterministic/` is offline-first; `evals/judge/` requires live credentials.
+- Runtime state lives in `.tieru/` and is always gitignored.
 
 ## Rules
 
-- **Be concise.** Sean wants short replies: lead with the answer, cut preamble and
-  recap. A few lines beats a wall of text. Expand only when he asks for detail.
+- **Be concise.** Lead with the answer, cut preamble and recap, and expand only
+  when the task needs the detail.
 - **Never wipe runtime data without asking first, every time.** `scripts/demo_seed.py`
   and anything else that clears `.tieru` (memory, calendar, chat log, traces, or the
   `usage.jsonl` spend ledger) must be proposed and explicitly approved by the user
@@ -54,11 +56,8 @@ The canonical technical contracts are the `tieru-agent` distribution, `tieru` pa
 - **No new dependencies without discussion** — the core is stdlib + anthropic/openai.
   Optional features go behind extras (`[voice]`, `[telegram]`, ...).
 - **Footprint ladder — where new capability goes.** Every registered tool ships in
-  every prompt, so the core stays narrow and capability lives at the edges. In order:
-  extend existing code → a skill (`SKILL.md`, no Python) → a CLI + README →
-  a tool behind an extra → a gateway (one file, text in/out only) →
-  **a new core tool, last resort**. Full version, with the "declined even when
-  well-built" list, in `CONTRIBUTING.md`.
+  every applicable prompt, so the core stays narrow and capability lives at the
+  edges. Follow the contribution ladder in `CONTRIBUTING.md`.
 - **Scope**: scheduling is the flagship teaching task, but the project is growing toward a
   full assistant. New capabilities (providers, tools, gateways, integrations) are welcome
   when they're self-contained, tested, and keep the core legible. Reject only complexity

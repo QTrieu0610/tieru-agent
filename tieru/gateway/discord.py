@@ -13,8 +13,7 @@ once, not one:
   integrity  their conversation gets distilled into your long-term memory
 
 So the default posture is DENY, and it takes deliberate configuration to open
-up. With nothing configured the bot answers direct messages only and ignores
-every server channel completely.
+up. With no user allowlist the bot answers nobody, including direct messages.
 
 Setup:
   1. Create a bot at https://discord.com/developers/applications
@@ -22,9 +21,8 @@ Setup:
   3. Put DISCORD_BOT_TOKEN=... in .env and invite the bot to your server
   4. Open it up only as far as you actually need (all optional):
 
-     DISCORD_ALLOWED_USER      comma-separated numeric user ids. Empty = anyone
-                               may DM the bot. Set this if the bot is reachable
-                               by people you don't know.
+     DISCORD_ALLOWED_USER      comma-separated numeric user ids. Required;
+                               empty means every sender is denied.
      DISCORD_ALLOWED_CHANNEL   comma-separated numeric channel ids. Empty means
                                NO server channel is answered. This is the switch
                                that keeps a 500-person Discord from billing you.
@@ -83,7 +81,7 @@ def should_answer(*, is_dm: bool, author_id: str, channel_id: str, mentioned: bo
     """The whole access policy, as one pure function so it can be tested without
     a Discord connection. Deny is the default at every branch.
 
-    DMs      answered unless an allowlist exists and excludes you.
+    DMs      answered only for an explicitly allowlisted user.
     Channels answered only if the channel is explicitly allowlisted AND the bot
              was @-mentioned AND the author passes the user allowlist.
 
@@ -93,7 +91,7 @@ def should_answer(*, is_dm: bool, author_id: str, channel_id: str, mentioned: bo
     is skipped entirely, so the bot answered every message from every member of
     every channel it could see. An empty config must be the safe one.
     """
-    if allowed_users and author_id not in allowed_users:
+    if not allowed_users or author_id not in allowed_users:
         return False
     if is_dm:
         return True
@@ -174,9 +172,14 @@ def describe_posture() -> str:
     server without anyone noticing it started."""
     users = _ids("DISCORD_ALLOWED_USER")
     channels = _ids("DISCORD_ALLOWED_CHANNEL")
-    who = f"{len(users)} allowlisted user(s)" if users else "anyone who can DM it"
-    where = (f"{len(channels)} allowlisted channel(s), @mention required"
-             if channels else "DMs only — no server channel will be answered")
+    who = f"{len(users)} allowlisted user(s)" if users else "NOBODY (gateway locked)"
+    where = (
+        "no messages — configure DISCORD_ALLOWED_USER"
+        if not users
+        else f"{len(channels)} allowlisted channel(s), @mention required"
+        if channels
+        else "allowlisted DMs only — no server channel will be answered"
+    )
     home = os.getenv("DISCORD_HOME", "").strip() or ".tieru — YOUR personal memory"
     cap = os.getenv("DISCORD_MAX_TURNS_PER_HOUR", "30")
     return (f"  reachable by: {who}\n"
@@ -194,6 +197,10 @@ def main() -> None:
     token = os.getenv("DISCORD_BOT_TOKEN", "")
     if not token:
         raise SystemExit("Set DISCORD_BOT_TOKEN in .env (create a bot in the Discord Developer Portal).")
+    if not _ids("DISCORD_ALLOWED_USER"):
+        raise SystemExit(
+            "Discord gateway locked: set DISCORD_ALLOWED_USER to at least one numeric user id."
+        )
     client = _build_client()
     print("Tieru is listening on Discord. Ctrl-C to stop.")
     print(describe_posture())
@@ -204,6 +211,9 @@ def start_in_background() -> bool:
     """Start Discord on a daemon thread, returning False when it is not configured."""
     token = os.getenv("DISCORD_BOT_TOKEN", "")
     if not token:
+        return False
+    if not _ids("DISCORD_ALLOWED_USER"):
+        print("(discord) gateway locked: DISCORD_ALLOWED_USER is empty; not starting")
         return False
     try:
         import discord  # noqa: F401

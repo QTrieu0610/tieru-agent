@@ -1,0 +1,41 @@
+version: 1
+active_profile: example-local-multi
+profiles:
+  example-local-multi:
+    main:
+      provider: ollama
+      model: gemma4:e2b
+    small:
+      provider: ollama
+      model: gemma4:e2b
+    judge:
+      provider: ollama
+      model: gemma4:e2b
+fabric:
+  enabled: true
+  routing_policy: local_only
+  models:
+    verified-local:
+      provider: ollama
+      model: gemma4:e2b
+      local: true
+      roles: [main, small, judge]
+      capabilities:
+        text: true
+        tool_calling: true
+        long_context: true
+      cost_tier: free
+      preference: 1.0
+    second-local-placeholder:
+      provider: ollama
+      model: YOUR_SECOND_OLLAMA_MODEL
+      local: true
+      roles: [main, small]
+      capabilities:
+        text: true
+        tool_calling: unknown
+        long_context: unknown
+      cost_tier: free
+      preference: 0.5
+shadow_enabled: false
+browser_enabled: false

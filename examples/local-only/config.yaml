@@ -1,0 +1,18 @@
+version: 1
+active_profile: example-local-only
+profiles:
+  example-local-only:
+    main:
+      provider: ollama
+      model: gemma4:e2b
+    small:
+      provider: ollama
+      model: gemma4:e2b
+    judge:
+      provider: ollama
+      model: gemma4:e2b
+fabric:
+  enabled: true
+  routing_policy: local_only
+shadow_enabled: false
+browser_enabled: false

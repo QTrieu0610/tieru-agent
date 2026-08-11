@@ -1,6 +1,6 @@
 # Loop vs graph engineering
 
-> **Historical upstream engineering note.** The tieru commands, measurements, and
+> **Historical upstream engineering note.** The Waku commands, measurements, and
 > results below are preserved as recorded. They have not been rerun as a Tieru
 > benchmark.
 

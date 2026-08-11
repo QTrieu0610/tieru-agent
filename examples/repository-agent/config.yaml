@@ -1,0 +1,19 @@
+version: 1
+active_profile: example-repository-agent
+profiles:
+  example-repository-agent:
+    main:
+      provider: ollama
+      model: gemma4:e2b
+    small:
+      provider: ollama
+      model: gemma4:e2b
+    judge:
+      provider: ollama
+      model: gemma4:e2b
+fabric:
+  enabled: true
+  default_mode: agent
+  routing_policy: local_only
+shadow_enabled: false
+browser_enabled: false

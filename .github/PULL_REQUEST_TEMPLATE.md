@@ -1,26 +1,40 @@
-**What this does, and why**
+## What changed?
 
-**Which issue does it close?** (`Closes #123`)
+## Why?
 
----
+Closes #
 
-- [ ] **Tested it, not just written it.** Say how below — the review will ask.
-- [ ] **A deterministic eval** in `evals/deterministic/` covers the behavior.
-      If you fixed a bug, add the case that catches it.
-- [ ] `make gate` and `make lint` pass locally.
-- [ ] Any heavy or optional dependency is **behind an extra**, not in the
-      default install.
-- [ ] No hidden network calls, no reading secrets or `.env`, nothing runs at
-      install time.
+## Type
 
-**How you tested it** — commands, and what you saw:
+- [ ] Bug fix
+- [ ] Feature
+- [ ] Documentation
+- [ ] Refactor
+- [ ] Provider/tool integration
 
-```
-```
+## Validation
 
-**Anything you're unsure about?** Say so. A question here is cheaper than a
-review round.
+- Tests added or updated:
+- `python -m pytest -q` result:
+- `python -m tieru.ops.release_gate` result, where appropriate:
 
----
-First PR here? CI needs a maintainer to approve your workflow run. If it looks
-stuck, say so on the PR — that delay is ours, not yours.
+## Impact
+
+- Security impact: None / explain
+- Privacy impact: None / explain
+- Trust impact: None / explain
+- Backward compatibility: Compatible / migration required / explain
+- Documentation: Updated / not applicable
+
+## Checklist
+
+- [ ] No credentials, tokens, cookies, private Memory, runtime databases, or
+      Capsule files are committed or pasted here.
+- [ ] No broad Trust permissions or allow-all debugging policy were introduced.
+- [ ] The local/no-cloud path remains supported, or the limitation is explicit.
+- [ ] New or changed behavior has deterministic coverage.
+- [ ] Public behavior and migration requirements are documented.
+- [ ] Optional dependencies and integrations remain optional.
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) and report vulnerabilities through
+[SECURITY.md](../SECURITY.md), not through a public PR description.

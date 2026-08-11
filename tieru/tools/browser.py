@@ -197,6 +197,9 @@ def make_tools(browser: RestrictedBrowser) -> list[Tool]:
             browser.open,
             read_only=True,
             default_policy="allow",
+            operation="navigate",
+            target_arg="url",
+            resource_type="browser",
             **common,
         ),
         Tool(
@@ -206,6 +209,9 @@ def make_tools(browser: RestrictedBrowser) -> list[Tool]:
             browser.read,
             read_only=True,
             default_policy="allow",
+            operation="extract",
+            fixed_target="current allowed page",
+            resource_type="browser",
             **common,
         ),
         Tool(
@@ -216,6 +222,10 @@ def make_tools(browser: RestrictedBrowser) -> list[Tool]:
             browser.click,
             read_only=False,
             default_policy="confirm",
+            operation="click",
+            target_arg="selector",
+            resource_type="browser",
+            reversible=False,
             **common,
         ),
         Tool(
@@ -228,6 +238,9 @@ def make_tools(browser: RestrictedBrowser) -> list[Tool]:
             read_only=False,
             default_policy="confirm",
             sensitive_args=("value",),
+            operation="fill",
+            target_arg="selector",
+            resource_type="browser",
             **common,
         ),
         Tool(
@@ -239,6 +252,9 @@ def make_tools(browser: RestrictedBrowser) -> list[Tool]:
             default_policy="confirm",
             risk="medium",
             capabilities=("browser", "filesystem.write"),
+            operation="screenshot",
+            fixed_target="Tieru home screenshots",
+            resource_type="browser",
         ),
         Tool(
             "browser_close",
@@ -249,5 +265,8 @@ def make_tools(browser: RestrictedBrowser) -> list[Tool]:
             default_policy="allow",
             risk="low",
             capabilities=("browser",),
+            operation="close",
+            fixed_target="isolated browser context",
+            resource_type="browser",
         ),
     ]

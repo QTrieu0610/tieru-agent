@@ -95,7 +95,7 @@ def test_dashboard_approval_timeout_and_disconnect_deny():
     assert result == [False]
 
 
-def test_registry_argument_fingerprint_changes_without_exposing_secret():
+def test_registry_fingerprint_excludes_secret_and_bounds_repeated_denial():
     seen = []
     registry = ToolRegistry(approval_handler=lambda request: seen.append(request) or False)
     registry.register(Tool(
@@ -105,8 +105,8 @@ def test_registry_argument_fingerprint_changes_without_exposing_secret():
     ))
     registry.execute("write", {"token": "first"})
     registry.execute("write", {"token": "second"})
-    assert seen[0].args == seen[1].args == {"token": "[REDACTED]"}
-    assert seen[0].argument_hash != seen[1].argument_hash
+    assert len(seen) == 1, "same secret-safe action denial must not prompt repeatedly"
+    assert seen[0].args == {"token": "[REDACTED]"}
     assert "first" not in seen[0].argument_hash
 
 

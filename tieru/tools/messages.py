@@ -40,4 +40,7 @@ def make_tool(home: Path) -> Tool:
         read_only=False,
         capabilities=("message.draft", "filesystem.write"),
         default_policy="confirm",
+        operation="draft",
+        target_arg="to",
+        resource_type="outbox",
     )

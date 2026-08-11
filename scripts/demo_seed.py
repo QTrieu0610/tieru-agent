@@ -7,7 +7,7 @@ What it does (your old state is backed up first, never just deleted):
   1. moves the current .tieru aside to .tieru.bak-<timestamp>
   2. creates a fresh state.db + calendar.ics
   3. seeds a small, clean memory (a few facts + one episode) and ONE calendar
-     event — Sergey's standing Saturday 5 PM swim
+     event — a synthetic Saturday 5 PM swim
   4. clears the loop/tool traces AND the Ops eval history, so the Loop, Tools and
      Ops tabs start empty and fill up live in front of the viewer as you type
 
@@ -35,15 +35,13 @@ FACTS = [
     # The parentheses around each multi-line string are load-bearing, not style:
     # inside a collection, a MISSING COMMA silently glues two entries into one
     # instead of erroring. ruff's ISC004 flags exactly that shape.
-    ("user", ("The user is Vo Quang Trieu (@QTrieu0610), lead developer of Tieru. "
-              "He builds personal AI agents.")),
-    ("raj", ("Raj is a close friend who plays really great tennis and always teaches me great "
-             "British slangs!")),
-    ("sergey", "Sergey is the close friend who loves swimming and often cooks delicious food!"),
+    ("user", "Demo User builds small local-first software projects."),
+    ("alex", "Alex is a fictional friend who prefers morning tennis."),
+    ("morgan", "Morgan is a fictional friend who enjoys swimming and cooking."),
 ]
-EPISODE = ("2026-07-11", "Confirmed the standing Saturday 5 PM swim with Sergey.")
-EVENT = {"title": "Swim with Sergey", "start": "2026-07-11T17:00",
-         "end": "2026-07-11T18:00", "attendees": "Sergey"}
+EPISODE = ("2026-07-11", "Confirmed the synthetic Saturday 5 PM swim with Morgan.")
+EVENT = {"title": "Swim with Morgan", "start": "2026-07-11T17:00",
+         "end": "2026-07-11T18:00", "attendees": "Morgan"}
 
 
 def main(reset_spend: bool = False) -> None:

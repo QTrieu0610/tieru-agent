@@ -102,6 +102,46 @@ from urllib.parse import parse_qs, urlparse
 from tieru.app import Tieru
 from tieru.gateway.cli import _observer  # mirror gate/tool activity on the laptop terminal
 
+DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024
+MAX_CONFIGURED_REQUEST_BODY_BYTES = 10 * 1024 * 1024
+
+
+def _max_request_body_bytes() -> int:
+    """Return a conservative bounded request limit from public configuration."""
+    raw = os.getenv("WHATSAPP_MAX_BODY_BYTES", str(DEFAULT_MAX_REQUEST_BODY_BYTES)).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_REQUEST_BODY_BYTES
+    return max(1024, min(value, MAX_CONFIGURED_REQUEST_BODY_BYTES))
+
+
+def sender_allowed(allowed: str, sender: str) -> bool:
+    """One explicit phone identity is required; empty never means wildcard."""
+    return bool(allowed.strip()) and hmac.compare_digest(allowed.strip(), sender)
+
+
+class RequestBodyError(ValueError):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def _read_bounded_body(headers, stream, max_bytes: int | None = None) -> bytes:
+    """Validate Content-Length before reading any bytes from an inbound stream."""
+    raw_length = headers.get("Content-Length")
+    if raw_length is None:
+        raise RequestBodyError(411, "content length required")
+    try:
+        content_length = int(raw_length)
+    except (TypeError, ValueError) as exc:
+        raise RequestBodyError(400, "invalid content length") from exc
+    if content_length < 0:
+        raise RequestBodyError(400, "invalid content length")
+    if content_length > (max_bytes or _max_request_body_bytes()):
+        raise RequestBodyError(413, "request body too large")
+    return stream.read(content_length)
+
 
 def _send_message(token: str, phone_number_id: str, to: str, text: str) -> bool:
     """Send a text message via the Meta Cloud API. Returns True on success."""
@@ -143,6 +183,10 @@ def _build_handler(
     waku_lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args) -> None:
+            """Suppress the default request-line log, which may contain verify tokens."""
+            return
+
         def _set_json(self, code: int) -> None:
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
@@ -166,7 +210,7 @@ def _build_handler(
                 self._set_json(200)
                 self.wfile.write(challenge.encode())
             else:
-                print(f"(whatsapp) verification failed: mode={mode} token={incoming_token}")
+                print("(whatsapp) verification failed")
                 self._set_json(403)
                 self.wfile.write(b"forbidden")
 
@@ -178,8 +222,12 @@ def _build_handler(
                 self.wfile.write(b"{}")
                 return
 
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
+            try:
+                body = _read_bounded_body(self.headers, self.rfile)
+            except RequestBodyError as exc:
+                self._set_json(exc.status)
+                self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
+                return
 
             # Verify Meta's X-Hub-Signature-256 — without this, anyone who
             # finds the webhook URL can forge payloads and drive the agent.
@@ -215,7 +263,7 @@ def _build_handler(
 
                         if not text or not sender:
                             continue
-                        if allowed and sender != allowed:
+                        if not sender_allowed(allowed, sender):
                             print(f"(whatsapp) rejected message from {sender} (not allowed)")
                             continue
 
@@ -267,6 +315,10 @@ def main() -> None:
             "This is required to verify webhook signatures — without it, anyone who finds "
             "your webhook URL can forge requests and drive the agent."
         )
+    if not allowed.strip():
+        raise SystemExit(
+            "WhatsApp gateway locked: set WHATSAPP_ALLOWED_PHONE to an allowed sender number."
+        )
 
     handler = _build_handler(token, phone_number_id, verify_token, app_secret, allowed)
     server = ThreadingHTTPServer(("0.0.0.0", 5000), handler)
@@ -292,8 +344,12 @@ def start_in_background() -> bool:
     phone_number_id = settings.whatsapp_phone_number_id
     verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
     app_secret = os.getenv("WHATSAPP_APP_SECRET", "")
+    allowed = os.getenv("WHATSAPP_ALLOWED_PHONE", "")
 
     if not token or not phone_number_id or not verify_token or not app_secret:
+        return False
+    if not allowed.strip():
+        print("(whatsapp) gateway locked: WHATSAPP_ALLOWED_PHONE is empty; not starting")
         return False
     try:
         import httpx  # noqa: F401
@@ -301,8 +357,6 @@ def start_in_background() -> bool:
         print("(whatsapp) WHATSAPP_TOKEN is set but the extra isn't installed — "
               "pip install 'tieru-agent[whatsapp]'")
         return False
-
-    allowed = os.getenv("WHATSAPP_ALLOWED_PHONE", "")
 
     def run() -> None:
         try:

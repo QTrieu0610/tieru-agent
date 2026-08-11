@@ -1,0 +1,36 @@
+version: 1
+active_profile: demo-local
+profiles:
+  demo-local:
+    main:
+      provider: ollama
+      model: gemma4:e2b
+    small:
+      provider: ollama
+      model: gemma4:e2b
+    judge:
+      provider: ollama
+      model: gemma4:e2b
+
+memory_write_policy: explicit
+
+tool_permissions:
+  defaults:
+    read_only: allow
+    side_effect: confirm
+  capabilities:
+    process.execute: deny
+
+trust:
+  default: deny
+  capabilities:
+    local_read: allow
+    local_write: confirm
+    network_read: deny
+    external_write: deny
+    process_execution: deny
+    browser_automation: deny
+    destructive: deny
+
+shadow_enabled: false
+browser_enabled: false

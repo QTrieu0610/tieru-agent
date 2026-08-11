@@ -94,6 +94,39 @@ def get_client(settings: Settings, role: str = "main"):
     )
 
 
+def get_client_for_target(settings: Settings, target, role: str = "main"):
+    """Build an explicit Fabric target without mutating global Settings."""
+    provider = settings.providers.get(target.provider)
+    if provider is None:
+        raise ConfigError(f"Unknown provider '{target.provider}' for Fabric target")
+    key = ""
+    for role_name, candidate_key in settings.role_api_keys.items():
+        if candidate_key and settings.role(role_name).provider == target.provider:
+            key = candidate_key.strip()
+            break
+    if not key and settings.api_key and settings.provider == target.provider:
+        key = settings.api_key.strip()
+    key_env = getattr(target, "api_key_env", "") or provider.api_key_env
+    if not key and key_env:
+        key = os.getenv(key_env, "").strip()
+    if not provider.keyless and not key:
+        raise SystemExit(_no_key_message(target.provider, key_env))
+    if key:
+        _validate_key(key, key_env or f"TIERU_{role.upper()}_API_KEY")
+    protocol = getattr(target, "protocol", "") or provider.protocol
+    base_url = getattr(target, "base_url", None) or provider.base_url
+    api_key = key or "ollama-local"
+    if protocol == "anthropic":
+        return AnthropicMessagesAdapter(
+            api_key=api_key, base_url=base_url, timeout=settings.llm_timeout
+        )
+    if protocol == "openai":
+        return OpenAICompatClient(
+            api_key=api_key, base_url=base_url, timeout=settings.llm_timeout
+        )
+    raise ConfigError(f"Fabric target uses unsupported protocol '{protocol}'")
+
+
 class ModelRouter:
     """Lazily construct independent main, small, and judge clients."""
 
@@ -106,6 +139,8 @@ class ModelRouter:
     ):
         self.settings = settings
         self._clients = dict(clients or {})
+        self._target_clients: dict[tuple[str, str, str], Any] = {}
+        self._shared_client = shared_client
         if shared_client is not None:
             for role in ("main", "small", "judge"):
                 self._clients.setdefault(role, shared_client)
@@ -123,3 +158,19 @@ class ModelRouter:
 
     def provider(self, name: str) -> str:
         return self.role(name).provider
+
+    def client_for(self, target, role: str = "main"):
+        """Resolve a selected target while retaining role-based compatibility."""
+        if target is None:
+            return self.client(role)
+        candidate_id = str(getattr(target, "candidate_id", ""))
+        if candidate_id and candidate_id in self._clients:
+            return self._clients[candidate_id]
+        if self._shared_client is not None:
+            return self._shared_client
+        key = (
+            str(target.protocol), str(target.provider), str(target.base_url or "")
+        )
+        if key not in self._target_clients:
+            self._target_clients[key] = get_client_for_target(self.settings, target, role)
+        return self._target_clients[key]

@@ -341,6 +341,10 @@ def make_tool(
         read_only=False,
         capabilities=("calendar.write", "filesystem.write"),
         default_policy="confirm",
+        operation="create",
+        target_arg="title",
+        resource_type="calendar",
+        reversible=False,
     )
 
 
@@ -436,4 +440,7 @@ def make_list_tool(conn: sqlite3.Connection, home: Path | None = None) -> Tool:
         read_only=True,
         capabilities=("calendar.read",),
         default_policy="allow",
+        operation="read",
+        fixed_target="configured calendars",
+        resource_type="calendar",
     )

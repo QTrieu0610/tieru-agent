@@ -18,6 +18,7 @@ End-loop guardrails (the orange box's exit conditions):
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -37,6 +38,7 @@ class LoopResult:
     reply: str
     tool_calls: list[LoopEvent] = field(default_factory=list)
     iterations: int = 0
+    run_id: str = ""
 
 
 def run_loop(
@@ -49,6 +51,8 @@ def run_loop(
     max_tokens: int = 2048,
     observer: Observer | None = None,
     stream: bool = False,
+    provider: str = "",
+    role: str = "main",
 ) -> LoopResult:
     """Run one agent turn. `messages` is mutated in place — after the call it
     contains the full working memory of the turn (assistant thoughts, tool
@@ -67,6 +71,9 @@ def run_loop(
 
         # ---- reason: one LLM call with the current working memory
         response = None
+        call_started = time.perf_counter()
+        notify("model_call_started", {"iteration": iteration, "model": model,
+                                      "provider": provider, "role": role})
         if can_stream:
             try:
                 with client.messages.stream(
@@ -87,7 +94,9 @@ def run_loop(
                 max_tokens=max_tokens,
             )
         notify("llm", {"iteration": iteration, "stop_reason": response.stop_reason,
-                       "usage": {"in": response.usage.input_tokens, "out": response.usage.output_tokens}})
+                       "usage": {"in": response.usage.input_tokens, "out": response.usage.output_tokens},
+                       "duration_ms": int((time.perf_counter() - call_started) * 1000),
+                       "model": model, "provider": provider, "role": role})
 
         # the assistant's turn (text and/or tool requests) joins working memory
         messages.append({"role": "assistant", "content": response.content})
@@ -102,8 +111,9 @@ def run_loop(
         # ---- act: execute each requested tool; observe: feed results back
         tool_results = []
         for call in tool_uses:
-            output = tools.execute(call.name, call.input, notify=notify)
             safe_args = tools.redact_args(call.name, call.input)
+            notify("tool_requested", {"tool": call.name, "args": safe_args})
+            output = tools.execute(call.name, call.input, notify=notify)
             event = {"tool": call.name, "args": safe_args, "output": output}
             result.tool_calls.append(event)
             notify("tool", event)
@@ -126,4 +136,7 @@ def run_loop(
 
     # ---- guardrail 2: ran out of iterations
     result.reply = "(I hit my iteration limit before finishing — try breaking the request into smaller steps.)"
+    notify("error", {"error_code": "iteration_limit",
+                     "error_summary": "Maximum loop iterations reached.",
+                     "iteration": max_iterations})
     return result

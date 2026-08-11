@@ -1,6 +1,6 @@
 # Model comparison — the tieru benchmark battery
 
-> **Historical upstream benchmark material.** This document records the tieru
+> **Historical upstream benchmark material.** This document records the Waku
 > harness, measurements, and filming plan that predate Tieru branding. Names,
 > commands, and results are preserved for provenance; they are not claims that
 > Tieru has independently rerun or validated these benchmarks.
@@ -124,7 +124,7 @@ built to win (its headline is Terminal-Bench / agentic tool use).
 | `remember-preference` **[seeded]** | "Remember that Alex prefers morning meetings" | `save_note`, content~morning |
 | `draft-message` **[seeded]** | "Send Alex a message that the demo moved to Friday" | `send_message`, body~friday |
 | `pokemon-team` **[seeded]** | "…search picks, remember Pikachu is my starter, schedule two training sessions" | ≥3 tool calls: search + save_note + 2× create_event |
-| `worldcup-final` **[seeded]** | "…search the result, remember who won, draft a message to Raj" | ≥3 tool calls, send_message to~raj |
+| `worldcup-final` **[seeded]** | "…search the result, remember who won, draft a message to Alex" | ≥3 tool calls, send_message to~alex |
 | `chitchat-no-action` **[seeded]** | "I might grab coffee with Alex sometime, we'll see." | `expect_tool: null` — musing isn't a command; must NOT schedule |
 | `exact-count-sessions` **[seeded]** | "Block three 25-minute focus sessions tomorrow morning" | ≥3 `create_event` — count precision, weak models make one |
 | `remember-and-book` **[seeded]** | "Remember I'm vegetarian, then book dinner with Sam Thursday 7pm" | ≥2 calls: must do BOTH save_note + create_event(sam) |
@@ -374,7 +374,7 @@ That's the whole thesis on screen.
 
 ### Act 3 — the multi-tool showcase
 - `Build me a Kanto starter team around Pikachu: search current competitive picks for a balanced six, remember that Pikachu is my starter, and schedule two team-training sessions this week`
-- `Search for the result of the Spain vs Argentina World Cup final, remember who won, and draft a message to Raj about watching the highlights together`
+- `Search for the result of the Spain vs Argentina World Cup final, remember who won, and draft a message to Alex about watching the highlights together`
 
 ### Act 4 — the reveal
 Scroll to the **Scoreboard**: the cost-vs-quality **scatter** at the top (cheap &

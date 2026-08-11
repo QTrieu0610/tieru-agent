@@ -159,10 +159,12 @@ def test_permission_decision_is_observable_without_sensitive_arguments():
     tool.sensitive_args = ("body",)
     registry.register(tool)
     registry.execute("change", {"body": "secret"}, notify=lambda kind, event: events.append((kind, event)))
-    assert events == [
+    assert [event for event in events if event[0] == "permission"] == [
         ("permission", {"tool": "change", "decision": "deny", "policy": "deny",
                         "reason": "denied by policy", "args": {"body": "[REDACTED]"}})
     ]
+    assert [kind for kind, _event in events[:2]] == ["trust_request", "trust_decision"]
+    assert "body" not in events[0][1] and "body" not in events[1][1]
 
 
 def test_repeated_denial_stops_model_retry_loop():

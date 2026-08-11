@@ -71,9 +71,72 @@ def test_the_wheel_carries_dashboard_and_configuration_example():
     assert (static / "index.html").is_file() and (static / "js" / "main.js").is_file()
 
 
+def test_release_gate_pins_every_shipped_subsystem_and_runtime_asset():
+    from tieru.ops.release_gate import SHIPPED_SDIST_FILES, SHIPPED_WHEEL_FILES
+
+    subsystem_files = {
+        "tieru/trust/kernel.py",
+        "tieru/replay/service.py",
+        "tieru/forge/service.py",
+        "tieru/shadow/service.py",
+        "tieru/fabric/service.py",
+        "tieru/capsule/service.py",
+        "tieru/memory/graph/service.py",
+    }
+    assert subsystem_files <= SHIPPED_WHEEL_FILES
+    assert subsystem_files <= SHIPPED_SDIST_FILES
+    assert {
+        "tieru/tieru.example.yaml",
+        "tieru/ops/static/index.html",
+        "tieru/ops/static/js/main.js",
+        "tieru/ops/doctor.py",
+        "tieru/ops/init.py",
+    } <= SHIPPED_WHEEL_FILES
+    assert "tieru/ops/init.py" in SHIPPED_SDIST_FILES
+    assert any(path.endswith("/SKILL.md") for path in SHIPPED_WHEEL_FILES)
+
+
+def test_release_gate_forbids_runtime_and_temporary_artifacts():
+    from tieru.ops.release_gate import _forbidden_artifact_path
+
+    for path in (
+        "tieru_agent/.tieru/state.db",
+        "tieru_agent/traces/.tieru/run.tieru",
+        "tieru_agent/tieru/__pycache__/app.pyc",
+        "tieru_agent/capsule.tmp",
+        "tieru_agent/google-token.json",
+        "tieru_agent/traces/run.jsonl",
+        "tieru_agent/.env",
+    ):
+        assert _forbidden_artifact_path(path), path
+    assert not _forbidden_artifact_path("tieru_agent/tieru/ops/tracing.py")
+
+
 def test_personal_agent_template_is_excluded_from_source_distribution():
     sdist = _pyproject()["tool"]["hatch"]["build"]["targets"]["sdist"]
     assert "template_Agent.md" in sdist.get("exclude", [])
+
+
+def test_public_examples_ship_in_sdist_but_not_runtime_wheel():
+    targets = _pyproject()["tool"]["hatch"]["build"]["targets"]
+    sdist = targets["sdist"]
+    wheel = targets["wheel"]
+    assert "examples" not in sdist.get("exclude", [])
+    assert sdist.get("force-include", {}).get("examples") == "examples"
+    assert "examples" not in wheel.get("force-include", {})
+
+    from tieru.ops.release_gate import SHIPPED_SDIST_FILES, SHIPPED_WHEEL_FILES
+
+    expected = {
+        "examples/README.md",
+        "examples/local-only/config.yaml",
+        "examples/local-multi-model/config.yaml",
+        "examples/local-plus-cloud/config.yaml",
+        "examples/privacy-first/config.yaml",
+        "examples/repository-agent/config.yaml",
+    }
+    assert expected <= SHIPPED_SDIST_FILES
+    assert not any(path.startswith("examples/") for path in SHIPPED_WHEEL_FILES)
 
 
 def test_lookup_covers_both_install_shapes():

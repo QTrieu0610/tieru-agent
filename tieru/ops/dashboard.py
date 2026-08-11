@@ -224,6 +224,55 @@ def _tool_status(output: str) -> str:
     return "ok"
 
 
+def capsule_action(payload: dict) -> dict:
+    """Bounded dashboard Capsule actions inside TIERU_HOME/capsules only."""
+    from tieru.capsule import CapsuleError, CapsuleService
+    from tieru.trust import TrustKernel
+
+    settings = load_settings()
+    root = (settings.home / "capsules").resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    action = str(payload.get("action", "list"))
+    if action == "list":
+        return {"files": [p.name for p in sorted(root.glob("*.tieru")) if p.is_file()]}
+    name = Path(str(payload.get("filename", ""))).name
+    if not name or name != str(payload.get("filename", "")) or not name.endswith(".tieru"):
+        return {"error": "choose a .tieru filename inside TIERU_HOME/capsules"}
+    target = (root / name).resolve()
+    if root not in target.parents:
+        return {"error": "unsafe Capsule filename"}
+    conn = connect(settings.home)
+    try:
+        service = CapsuleService(
+            settings, conn,
+            trust_kernel=TrustKernel(
+                settings.trust_policy, settings.tool_permissions,
+                approval_handler=lambda _request: True,
+                context={"home": str(settings.home.resolve())},
+            ),
+        )
+        if action == "export":
+            include = tuple(
+                scope for scope in (payload.get("include") or [])
+                if scope in {"identity", "memory", "skills", "preferences", "trust", "fabric", "replay", "forge", "shadow"}
+            )
+            return service.export(target, profile=str(payload.get("profile", "portable")), include=include)
+        if not target.is_file():
+            return {"error": "Capsule file not found in TIERU_HOME/capsules"}
+        if action == "inspect":
+            return service.inspect(target)
+        plan = service.plan_import(target)
+        if action == "preview":
+            return plan.to_dict()
+        if action == "import" and payload.get("confirmed") is True:
+            return service.import_capsule(target, plan=plan)
+        return {"error": "explicit import confirmation required"}
+    except (CapsuleError, OSError, PermissionError) as exc:
+        return {"error": str(exc)}
+    finally:
+        conn.close()
+
+
 # Notion-backed episodes live across the network, so the client AND the result
 # are cached with a short TTL — collect() runs on every dashboard auto-refresh
 # and must not round-trip to Notion every few seconds (rate limits + latency).
@@ -400,7 +449,23 @@ def collect() -> dict:
     db_info = {
         "path": str(db_path.resolve()),
         "size": db_path.stat().st_size if db_path.exists() else 0,
-        "tables": [table_info(n) for n in ("calendar_events", "facts", "episodes", "chat_log")],
+        "tables": [
+            table_info(n)
+            for n in (
+                "calendar_events",
+                "facts",
+                "episodes",
+                "graph_entities",
+                "graph_relations",
+                "chat_log",
+                "replay_runs",
+                "replay_events",
+                "shadow_patterns",
+                "shadow_suggestions",
+                "shadow_observations",
+                "shadow_settings",
+            )
+        ],
         "fts": [t for t in all_tables if t.endswith("_fts")],
         "all_tables": all_tables,
     }
@@ -423,6 +488,90 @@ def collect() -> dict:
                    "at": e.get("ts"), "steps": e.get("steps"),
                    "path": e.get("path") or [], "error": e.get("error")}
                   for e in events if e.get("type") == "graph_end"][-8:][::-1]
+
+    from tieru.memory.graph import GraphService, GraphStore
+
+    memory_graph = GraphService(GraphStore(conn)).snapshot()
+
+    from tieru.trust import PolicyEvaluator
+
+    trust = PolicyEvaluator(
+        settings.trust_policy,
+        settings.tool_permissions,
+        {
+            "base_path": str(settings.home.resolve().parent),
+            "path_aliases": {"home": str(settings.home.resolve())},
+        },
+    ).public_summary()
+    trust["recent_decisions"] = [
+        {
+            "tool": event.get("tool", ""),
+            "capability": event.get("capability", []),
+            "risk": event.get("risk", ""),
+            "allowed": bool(event.get("allowed")),
+            "approval_required": bool(event.get("approval_required")),
+            "reason_codes": event.get("reason_codes", []),
+        }
+        for event in events
+        if event.get("type") == "trust_decision"
+    ][-20:][::-1]
+
+    from tieru.replay import ReplayService
+
+    replay_service = ReplayService(conn, settings)
+    replay = {
+        "runs": replay_service.list_runs(limit=50),
+        "retention": {
+            "max_runs": settings.replay_max_runs,
+            "max_age_days": settings.replay_max_age_days,
+            "max_event_payload_bytes": settings.replay_max_event_payload_bytes,
+            "max_tool_output_bytes": settings.replay_max_tool_output_bytes,
+        },
+    }
+    from tieru.fabric import ModelFabric
+    from tieru.loop.models import ModelRouter
+
+    fabric_service = ModelFabric(settings, ModelRouter(settings), replay=replay_service)
+    recent_fabric = []
+    for row in conn.execute(
+        """SELECT r.id AS run_id,r.started_at,r.status,r.latency_ms,r.iterations,
+                  r.tool_count,r.role,e.model,e.provider,e.payload_json
+           FROM replay_events e JOIN replay_runs r ON r.id=e.run_id
+           WHERE e.category='fabric' AND e.event_type='fabric_selection'
+             AND e.sequence=(SELECT MAX(e2.sequence) FROM replay_events e2
+                             WHERE e2.run_id=e.run_id
+                               AND e2.event_type='fabric_selection')
+           ORDER BY r.started_at DESC,e.sequence DESC LIMIT 25"""
+    ).fetchall():
+        item = dict(row)
+        try:
+            payload = json.loads(item.pop("payload_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        recent_fabric.append({
+            **item,
+            "task_type": payload.get("task_type", ""),
+            "execution_mode": payload.get("execution_mode", "standard"),
+            "reason_codes": payload.get("reason_codes", []),
+            "classifier_source": payload.get("classifier_source", ""),
+            "fallback_used": bool(payload.get("fallback_used")),
+            "candidate_id": payload.get("candidate_id", ""),
+            "initial_candidate_id": payload.get("initial_candidate_id", ""),
+            "score": payload.get("total_score"),
+            "score_breakdown": payload.get("score_breakdown", {}),
+            "fallback_count": int(payload.get("fallback_count") or 0),
+        })
+    fabric = {**fabric_service.status(), "recent_routes": recent_fabric}
+    from tieru.forge import ForgeService
+
+    forge_service = ForgeService(conn, settings, approval_handler=lambda _request: False)
+    forge = {
+        "eligible_runs": [run for run in replay["runs"] if run.get("status") == "completed"],
+        "drafts": forge_service.list(),
+    }
+    from tieru.shadow import ShadowService
+
+    shadow = ShadowService(conn, settings).snapshot()
 
     return {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -455,6 +604,12 @@ def collect() -> dict:
         "episodes": episodes_data["items"],
         "episodes_source": episodes_data["source"],
         "episodes_error": episodes_data["error"],
+        "memory_graph": memory_graph,
+        "trust": trust,
+        "replay": replay,
+        "fabric": fabric,
+        "forge": forge,
+        "shadow": shadow,
         "soul": (home / "SOUL.md").read_text(encoding="utf-8") if (home / "SOUL.md").exists() else "",
         "chat_pending": conn.execute("SELECT COUNT(*) FROM chat_log WHERE consolidated=0").fetchone()[0],
         "chat_log": rows("SELECT role, content, consolidated, source, session_id, created_at FROM chat_log ORDER BY id DESC LIMIT 80")[::-1],
@@ -849,6 +1004,72 @@ def memory_action(payload: dict) -> dict:
     return {"error": f"unknown action {action}"}
 
 
+def forge_action(payload: dict) -> dict:
+    """Explicit dashboard actions over inactive Forge drafts."""
+    from tieru.forge.cli import make_service
+
+    settings = load_settings()
+    settings.ensure_home()
+    action = str(payload.get("action") or "")
+    service = make_service(settings, approval_handler=lambda _request: True, use_model=True)
+    try:
+        if action == "forge":
+            run_ids = payload.get("run_ids") or []
+            if not isinstance(run_ids, list) or not run_ids:
+                return {"error": "select at least one completed Replay run"}
+            return service.forge([str(item) for item in run_ids]).public()
+        draft_id = str(payload.get("draft_id") or "")
+        if action == "validate":
+            return service.validate(draft_id).public()
+        if action == "evaluate":
+            return service.evaluate(draft_id).public()
+        if action == "install":
+            if payload.get("approved") is not True:
+                return {"error": "explicit installation approval is required"}
+            return service.install(draft_id, approved=True).public()
+        if action == "reject":
+            return service.reject(draft_id).public()
+        return {"error": f"unknown Forge action {action}"}
+    finally:
+        service.replay.store.conn.close()
+
+
+def shadow_action(payload: dict) -> dict:
+    """Explicit controls over passive Shadow metadata and Forge handoff."""
+    from tieru.shadow import ShadowService
+
+    settings = load_settings()
+    settings.ensure_home()
+    conn = connect(settings.home)
+    service = ShadowService(conn, settings)
+    try:
+        action = str(payload.get("action") or "")
+        if action == "enable":
+            return service.set_enabled(True)
+        if action == "disable":
+            return service.set_enabled(False)
+        suggestion_id = str(payload.get("suggestion_id") or "")
+        if action == "ignore":
+            return service.ignore(suggestion_id).public()
+        if action == "snooze":
+            return service.snooze(suggestion_id).public()
+        if action == "dismiss":
+            return service.dismiss(suggestion_id).public()
+        if action == "forge":
+            from tieru.forge.cli import make_service
+
+            forge_service = make_service(
+                settings, approval_handler=lambda _request: True, use_model=True
+            )
+            try:
+                return service.forge(suggestion_id, forge_service).public()
+            finally:
+                forge_service.replay.store.conn.close()
+        return {"error": f"unknown Shadow action {action}"}
+    finally:
+        conn.close()
+
+
 
 
 def events_since(cursor):
@@ -933,6 +1154,52 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"approvals": dashboard_approvals.list_pending()})
         elif self.path == "/api/data":
             self._send(json.dumps(collect(), default=str).encode(), "application/json")
+        elif self.path.startswith("/api/replay/"):
+            from urllib.parse import unquote, urlparse
+
+            from tieru.replay import ReplayService
+
+            run_id = unquote(urlparse(self.path).path.removeprefix("/api/replay/"))
+            settings = load_settings()
+            conn = connect(settings.home)
+            try:
+                detail = ReplayService(conn, settings).inspect(run_id, include_events=True)
+                self._json(detail)
+            except KeyError:
+                self._json({"error": "Replay run not found"}, status=404)
+            finally:
+                conn.close()
+        elif self.path.startswith("/api/forge/"):
+            from urllib.parse import unquote, urlparse
+
+            from tieru.forge.cli import make_service
+
+            draft_id = unquote(urlparse(self.path).path.removeprefix("/api/forge/"))
+            service = make_service(
+                load_settings(), approval_handler=lambda _request: False, use_model=False
+            )
+            try:
+                detail = service.get(draft_id).public()
+                detail["duplicates"] = service.duplicates(service.get(draft_id))
+                self._json(detail)
+            except KeyError:
+                self._json({"error": "Forge draft not found"}, status=404)
+            finally:
+                service.replay.store.conn.close()
+        elif self.path.startswith("/api/shadow/"):
+            from urllib.parse import unquote, urlparse
+
+            from tieru.shadow import ShadowService
+
+            suggestion_id = unquote(urlparse(self.path).path.removeprefix("/api/shadow/"))
+            settings = load_settings()
+            conn = connect(settings.home)
+            try:
+                self._json(ShadowService(conn, settings).inspect(suggestion_id))
+            except KeyError:
+                self._json({"error": "Shadow suggestion not found"}, status=404)
+            finally:
+                conn.close()
         elif self.path == "/api/compare/history":
             runs = compare_history.load_runs(load_settings().home)
             self._send(json.dumps(history_response(runs)).encode(), "application/json")
@@ -1058,7 +1325,10 @@ class Handler(BaseHTTPRequestHandler):
             ok = dashboard_approvals.resolve(payload)
             self._json({"ok": ok}, status=200 if ok else 409)
             return
-        routes = {"/api/chat": None, "/api/memory": memory_action, "/api/settings": apply_settings,
+        routes = {"/api/chat": None, "/api/memory": memory_action, "/api/forge": forge_action,
+                  "/api/shadow": shadow_action,
+                  "/api/capsule": capsule_action,
+                  "/api/settings": apply_settings,
                   "/api/query": run_query, "/api/session": session_action, "/api/pin": pin_action,
                   "/api/reveal": lambda payload: reveal_path(str(payload.get("path", ""))),
                   "/api/compare/clear": compare_clear,

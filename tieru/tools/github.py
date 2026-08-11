@@ -202,4 +202,8 @@ def make_tool(default_repo: str = "") -> Tool:
         read_only=True,
         capabilities=("network.read", "process.read"),
         default_policy="allow",
+        operation="read",
+        target_arg="repo",
+        fixed_target=default_repo,
+        resource_type="repository",
     )

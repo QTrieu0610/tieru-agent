@@ -1,7 +1,7 @@
 """Tools that let the agent manage its OWN memory — so it feels like a personal
 assistant that learns, not a black box. Three tools:
 
-  manage_memory  — search / update / delete facts and episodes (the CRUD)
+  manage_memory  — inspect/write/archive facts, episodes, and graph relations
   update_soul    — append a durable behaviour rule to SOUL.md (its persona)
   create_skill   — write a new SKILL.md, so the agent builds its own procedures
 
@@ -17,7 +17,7 @@ import re
 from dataclasses import asdict
 
 from tieru.memory import bundled_skill_dirs
-from tieru.memory.personal import contains_secret
+from tieru.memory.personal import UnsafeMemoryError, contains_secret
 from tieru.memory.procedural.loader import _parse_text
 from tieru.tools.registry import Tool
 
@@ -29,9 +29,56 @@ def make_manage_memory_tool(memory) -> Tool:
     facts = memory.facts
     episodes = memory.episodes
 
-    def manage_memory(action: str, kind: str = "fact", id: int = 0,
-                      query: str = "", content: str = "", subject: str = "") -> str:
+    def manage_memory(
+        action: str,
+        kind: str = "fact",
+        id: int | str = 0,
+        query: str = "",
+        content: str = "",
+        subject: str = "",
+        predicate: str = "",
+        object: str = "",
+        subject_type: str = "concept",
+        object_type: str = "concept",
+        confidence: float | None = None,
+        importance: float = 0.5,
+        source_ref: str = "",
+        valid_from: str = "",
+        valid_to: str = "",
+    ) -> str:
         action = (action or "").lower()
+        if action == "remember_relation":
+            try:
+                relation, created = memory.graph.remember_relation(
+                    subject=subject,
+                    predicate=predicate,
+                    object=object,
+                    subject_type=subject_type,
+                    object_type=object_type,
+                    confidence=confidence,
+                    importance=importance,
+                    source_type="explicit_user_save",
+                    source_ref=source_ref or "tool:manage_memory",
+                    valid_from=valid_from,
+                    valid_to=valid_to,
+                )
+            except (UnsafeMemoryError, ValueError) as exc:
+                return f"Refused: {exc}"
+            verb = "Saved" if created else "Already remembered"
+            return f"{verb} as relation:{relation.id}."
+        if action == "inspect_relation":
+            try:
+                return json.dumps(
+                    memory.graph.inspect_relation(int(id)), ensure_ascii=False, sort_keys=True
+                )
+            except (KeyError, TypeError, ValueError):
+                return f"No relation with id relation:{id}."
+        if action == "archive_relation":
+            try:
+                relation = memory.graph.archive_relation(int(id))
+            except (KeyError, TypeError, ValueError):
+                return f"No relation with id relation:{id}."
+            return f"Archived relation:{relation.id}."
         store = getattr(memory, "store", None)
         external_episode = (
             kind == "episode"
@@ -72,7 +119,10 @@ def make_manage_memory_tool(memory) -> Tool:
                 path = memory.settings.home / "memory-export.json"
                 store.export(path)
                 return f"Exported memory to {path}."
-            return "action must be one of: search, list, get, update, delete, export"
+            return (
+                "action must be one of: search, list, get, update, delete, export, "
+                "remember_relation, inspect_relation, archive_relation"
+            )
         if action == "search":
             if kind == "episode":
                 rows = episodes.list(20)
@@ -92,25 +142,44 @@ def make_manage_memory_tool(memory) -> Tool:
                 rid = int(id) if str(id).isdigit() else str(id)
                 return f"Deleted episode #{id}." if episodes.delete(rid) else f"No episode with id {id}."
             return f"Deleted fact #{id}." if facts.delete(int(id)) else f"No fact with id {id}."
-        return "action must be one of: search, update, delete"
+        return (
+            "action must be one of: search, update, delete, remember_relation, "
+            "inspect_relation, archive_relation"
+        )
 
     return Tool(
         name="manage_memory",
         description=(
-            "Search, correct, or delete the user's long-term memory (facts and episodes). "
+            "Search, correct, or delete long-term facts and episodes, and explicitly "
+            "remember, inspect, or archive typed Memory Graph relations. "
             "ALWAYS search first to get the id, then update or delete that id. "
-            "Use when the user says something you remember is wrong or should be forgotten."
+            "Only remember a relation when the user explicitly asks to store it."
         ),
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["search", "list", "get", "update", "delete", "export"]},
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "search", "list", "get", "update", "delete", "export",
+                        "remember_relation", "inspect_relation", "archive_relation",
+                    ],
+                },
                 "kind": {"type": "string", "enum": ["fact", "episode"], "description": "default fact"},
                 "id": {"type": ["integer", "string"],
                        "description": "row id (from a prior search); a number for sqlite, a page id string when the notion backend is active"},
                 "query": {"type": "string", "description": "keywords for search"},
                 "content": {"type": "string", "description": "new text for update"},
                 "subject": {"type": "string", "description": "optional new subject for a fact update"},
+                "predicate": {"type": "string", "description": "graph predicate, e.g. WORKS_ON"},
+                "object": {"type": "string", "description": "graph relation object"},
+                "subject_type": {"type": "string", "description": "graph subject entity type"},
+                "object_type": {"type": "string", "description": "graph object entity type"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "importance": {"type": "number", "minimum": 0, "maximum": 1},
+                "source_ref": {"type": "string", "description": "optional source record reference"},
+                "valid_from": {"type": "string", "description": "optional ISO 8601 start"},
+                "valid_to": {"type": "string", "description": "optional ISO 8601 end"},
             },
             "required": ["action"],
         },
@@ -120,14 +189,24 @@ def make_manage_memory_tool(memory) -> Tool:
         capabilities=("memory.read", "memory.write"),
         default_policy="confirm",
         action_field="action",
-        action_policies={"search": "allow", "list": "allow", "get": "allow",
-                         "update": "confirm", "delete": "confirm", "export": "confirm"},
-        action_read_only={"search": True, "list": True, "get": True},
+        action_policies={
+            "search": "allow", "list": "allow", "get": "allow",
+            "inspect_relation": "allow", "update": "confirm", "delete": "confirm",
+            "export": "confirm", "remember_relation": "confirm", "archive_relation": "confirm",
+        },
+        action_read_only={
+            "search": True, "list": True, "get": True, "inspect_relation": True,
+        },
         action_capabilities={
             "search": ("memory.read",), "list": ("memory.read",), "get": ("memory.read",),
+            "inspect_relation": ("memory.read",),
             "update": ("memory.write",), "delete": ("memory.write",),
+            "remember_relation": ("memory.write",), "archive_relation": ("memory.write",),
             "export": ("memory.read", "filesystem.write"),
         },
+        sensitive_args=("content", "subject", "object", "source_ref"),
+        resource_type="memory",
+        target_arg="id",
     )
 
 
@@ -167,6 +246,9 @@ def make_update_soul_tool(settings) -> Tool:
         read_only=False,
         capabilities=("persona.write", "filesystem.write"),
         default_policy="confirm",
+        operation="append_rule",
+        fixed_target="SOUL.md",
+        resource_type="memory",
     )
 
 
@@ -210,4 +292,7 @@ def make_create_skill_tool(settings, memory) -> Tool:
         read_only=False,
         capabilities=("instructions.write", "filesystem.write"),
         default_policy="confirm",
+        operation="create_skill",
+        target_arg="name",
+        resource_type="skill",
     )

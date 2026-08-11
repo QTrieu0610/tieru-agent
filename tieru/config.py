@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 import yaml
 from dotenv import find_dotenv, load_dotenv
+from yaml.constructor import ConstructorError
 
 ROLE_NAMES = ("main", "small", "judge")
 PROTOCOLS = ("anthropic", "openai")
@@ -33,6 +34,29 @@ class ConfigError(ValueError):
 
 class TieruCompatibilityWarning(FutureWarning):
     """A deprecated Waku contract was selected."""
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects aliases/keys silently overwritten by YAML."""
+
+
+def _construct_unique_mapping(loader, node, deep=False):
+    loader.flatten_mapping(node)
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise ConstructorError(
+                "while constructing a mapping", node.start_mark,
+                f"duplicate key {key!r}", key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping
+)
 
 
 def _load_env() -> str:
@@ -191,6 +215,47 @@ class Settings:
     memory_write_policy: str = "explicit"
     memory_max_records: int = 10000
     tool_permissions: dict[str, Any] = field(default_factory=dict)
+    trust_policy: dict[str, Any] = field(default_factory=dict)
+    replay_max_runs: int = 500
+    replay_max_age_days: int = 30
+    replay_max_event_payload_bytes: int = 8192
+    replay_max_tool_output_bytes: int = 2048
+    shadow_enabled: bool = False
+    shadow_min_occurrences: int = 3
+    shadow_max_evidence_runs: int = 5
+    shadow_suggestions: bool = True
+    shadow_snooze_days: int = 7
+    shadow_stale_days: int = 30
+    fabric_enabled: bool = False
+    fabric_default_mode: str = "standard"
+    fabric_use_small_classifier: bool = False
+    fabric_quick_max_tokens: int = 512
+    fabric_quick_max_iterations: int = 1
+    fabric_quick_history_turns: int = 2
+    fabric_agent_max_tokens: int = 4096
+    fabric_agent_max_iterations: int = 10
+    fabric_deep_max_tokens: int = 12288
+    fabric_deep_max_iterations: int = 12
+    fabric_deep_history_turns: int = 24
+    fabric_deep_verification: bool = True
+    fabric_routing_policy: str = "local_first"
+    fabric_min_history_samples: int = 5
+    fabric_availability_ttl_seconds: int = 60
+    fabric_max_fallbacks: int = 1
+    fabric_weights: dict[str, float] = field(default_factory=lambda: {
+        "capability": 0.35,
+        "preference": 0.20,
+        "performance": 0.20,
+        "latency": 0.15,
+        "cost": 0.10,
+        "local": 0.0,
+    })
+    fabric_models: dict[str, dict[str, Any]] = field(default_factory=dict)
+    capsule_max_archive_bytes: int = 100 * 1024 * 1024
+    capsule_max_files: int = 1000
+    capsule_max_file_bytes: int = 20 * 1024 * 1024
+    capsule_max_uncompressed_bytes: int = 200 * 1024 * 1024
+    capsule_max_compression_ratio: int = 100
     browser_enabled: bool = False
     browser_allowed_domains: tuple[str, ...] = ()
     browser_allow_local_fixture: bool = False
@@ -269,6 +334,62 @@ class Settings:
                 "embedding_model": self.embedding_model,
             },
             "tool_permissions": self.tool_permissions,
+            "trust": self.trust_policy,
+            "replay": {
+                "max_runs": self.replay_max_runs,
+                "max_age_days": self.replay_max_age_days,
+                "max_event_payload_bytes": self.replay_max_event_payload_bytes,
+                "max_tool_output_bytes": self.replay_max_tool_output_bytes,
+            },
+            "shadow": {
+                "enabled": self.shadow_enabled,
+                "min_occurrences": self.shadow_min_occurrences,
+                "max_evidence_runs": self.shadow_max_evidence_runs,
+                "suggestions": self.shadow_suggestions,
+                "snooze_days": self.shadow_snooze_days,
+                "stale_days": self.shadow_stale_days,
+            },
+            "fabric": {
+                "enabled": self.fabric_enabled,
+                "default_mode": self.fabric_default_mode,
+                "use_small_classifier": self.fabric_use_small_classifier,
+                "quick": {
+                    "max_tokens": self.fabric_quick_max_tokens,
+                    "max_iterations": self.fabric_quick_max_iterations,
+                    "history_turns": self.fabric_quick_history_turns,
+                },
+                "agent": {
+                    "max_tokens": self.fabric_agent_max_tokens,
+                    "max_iterations": self.fabric_agent_max_iterations,
+                },
+                "deep": {
+                    "max_tokens": self.fabric_deep_max_tokens,
+                    "max_iterations": self.fabric_deep_max_iterations,
+                    "history_turns": self.fabric_deep_history_turns,
+                    "verification": self.fabric_deep_verification,
+                },
+                "routing_policy": self.fabric_routing_policy,
+                "min_history_samples": self.fabric_min_history_samples,
+                "availability_ttl_seconds": self.fabric_availability_ttl_seconds,
+                "max_fallbacks": self.fabric_max_fallbacks,
+                "weights": dict(self.fabric_weights),
+                "models": {
+                    alias: {
+                        key: value for key, value in model.items()
+                        if str(key).lower() not in {
+                            "api_key", "token", "secret", "password", "credentials"
+                        }
+                    }
+                    for alias, model in self.fabric_models.items()
+                },
+            },
+            "capsule": {
+                "max_archive_bytes": self.capsule_max_archive_bytes,
+                "max_files": self.capsule_max_files,
+                "max_file_bytes": self.capsule_max_file_bytes,
+                "max_uncompressed_bytes": self.capsule_max_uncompressed_bytes,
+                "max_compression_ratio": self.capsule_max_compression_ratio,
+            },
             "browser": {
                 "enabled": self.browser_enabled,
                 "allowed_domains": list(self.browser_allowed_domains),
@@ -359,6 +480,17 @@ def _as_mapping(value: Any, name: str) -> dict[str, Any]:
     return dict(value)
 
 
+def _as_weights(value: Any, name: str) -> dict[str, float]:
+    raw = _as_mapping(value, name)
+    result: dict[str, float] = {}
+    for key, weight in raw.items():
+        try:
+            result[str(key)] = float(weight)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(f"{name}.{key} must be a number") from exc
+    return result
+
+
 def _validate_url(value: str | None, label: str) -> str | None:
     if not value:
         return None
@@ -386,7 +518,9 @@ def _read_yaml(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists():
         return {}
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = yaml.load(  # noqa: S506 - loader is a SafeLoader subclass
+            path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader
+        ) or {}
     except (OSError, yaml.YAMLError) as exc:
         raise ConfigError(f"Cannot read YAML config {path}: {exc}") from exc
     if not isinstance(data, dict):
@@ -608,6 +742,9 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
     profile = str(profile or data.get("active_profile") or "default")
     roles = _resolved_roles(data, profile, providers, used, overrides)
     home, legacy_home = _home(data, overrides, used, config_path)
+    fabric_data = data.get("fabric") or {}
+    if not isinstance(fabric_data, dict):
+        raise ConfigError("fabric must be a mapping")
 
     def value(name: str, default: Any, legacy_name: str | None = None) -> Any:
         if name in overrides:
@@ -616,6 +753,17 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         legacy = (legacy_name or f"WAKU_{name.upper()}",)
         env = _first_env(primary, legacy, used)
         return data.get(name, default) if env is None else env
+
+    def fabric_value(name: str, default: Any, legacy_top_level: str | None = None) -> Any:
+        top_level = legacy_top_level or f"fabric_{name}"
+        if top_level in overrides:
+            return overrides[top_level]
+        env = _first_env((f"TIERU_FABRIC_{name.upper()}",), (), used)
+        if env is not None:
+            return env
+        if name in fabric_data:
+            return fabric_data[name]
+        return value(top_level, default)
 
     main, small = roles["main"], roles["small"]
     role_api_keys = {}
@@ -648,6 +796,117 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         memory_max_records=_as_int(value("memory_max_records", 10000),
                                    "memory_max_records", 1),
         tool_permissions=_as_mapping(value("tool_permissions", {}), "tool_permissions"),
+        trust_policy=_as_mapping(value("trust", {}), "trust"),
+        replay_max_runs=_as_int(value("replay_max_runs", 500), "replay_max_runs", 1),
+        replay_max_age_days=_as_int(
+            value("replay_max_age_days", 30), "replay_max_age_days", 1
+        ),
+        replay_max_event_payload_bytes=_as_int(
+            value("replay_max_event_payload_bytes", 8192),
+            "replay_max_event_payload_bytes",
+            256,
+        ),
+        replay_max_tool_output_bytes=_as_int(
+            value("replay_max_tool_output_bytes", 2048),
+            "replay_max_tool_output_bytes",
+            128,
+        ),
+        shadow_enabled=_as_bool(value("shadow_enabled", False), "shadow_enabled"),
+        shadow_min_occurrences=_as_int(
+            value("shadow_min_occurrences", 3), "shadow_min_occurrences", 2
+        ),
+        shadow_max_evidence_runs=_as_int(
+            value("shadow_max_evidence_runs", 5), "shadow_max_evidence_runs", 1
+        ),
+        shadow_suggestions=_as_bool(
+            value("shadow_suggestions", True), "shadow_suggestions"
+        ),
+        shadow_snooze_days=_as_int(
+            value("shadow_snooze_days", 7), "shadow_snooze_days", 1
+        ),
+        shadow_stale_days=_as_int(
+            value("shadow_stale_days", 30), "shadow_stale_days", 1
+        ),
+        fabric_enabled=_as_bool(fabric_value("enabled", False), "fabric.enabled"),
+        fabric_default_mode=str(fabric_value("default_mode", "standard")).lower(),
+        fabric_use_small_classifier=_as_bool(
+            fabric_value("use_small_classifier", False), "fabric.use_small_classifier"
+        ),
+        fabric_quick_max_tokens=_as_int(
+            fabric_value("quick_max_tokens", 512), "fabric.quick_max_tokens", 64
+        ),
+        fabric_quick_max_iterations=_as_int(
+            fabric_value("quick_max_iterations", 1), "fabric.quick_max_iterations", 1
+        ),
+        fabric_quick_history_turns=_as_int(
+            fabric_value("quick_history_turns", 2), "fabric.quick_history_turns", 1
+        ),
+        fabric_agent_max_tokens=_as_int(
+            fabric_value("agent_max_tokens", 4096), "fabric.agent_max_tokens", 64
+        ),
+        fabric_agent_max_iterations=_as_int(
+            fabric_value("agent_max_iterations", 10), "fabric.agent_max_iterations", 1
+        ),
+        fabric_deep_max_tokens=_as_int(
+            fabric_value("deep_max_tokens", 12288), "fabric.deep_max_tokens", 64
+        ),
+        fabric_deep_max_iterations=_as_int(
+            fabric_value("deep_max_iterations", 12), "fabric.deep_max_iterations", 1
+        ),
+        fabric_deep_history_turns=_as_int(
+            fabric_value("deep_history_turns", 24), "fabric.deep_history_turns", 1
+        ),
+        fabric_deep_verification=_as_bool(
+            fabric_value("deep_verification", True), "fabric.deep_verification"
+        ),
+        fabric_routing_policy=str(
+            fabric_value("routing_policy", "local_first")
+        ).lower(),
+        fabric_min_history_samples=_as_int(
+            fabric_value("min_history_samples", 5),
+            "fabric.min_history_samples", 0,
+        ),
+        fabric_availability_ttl_seconds=_as_int(
+            fabric_value("availability_ttl_seconds", 60),
+            "fabric.availability_ttl_seconds", 1,
+        ),
+        fabric_max_fallbacks=_as_int(
+            fabric_value("max_fallbacks", 1), "fabric.max_fallbacks", 0,
+        ),
+        fabric_weights=_as_weights(
+                fabric_value("weights", {
+                    "capability": 0.35, "preference": 0.20,
+                    "performance": 0.20, "latency": 0.15,
+                    "cost": 0.10, "local": 0.0,
+                }),
+                "fabric.weights",
+            ),
+        fabric_models={
+            str(alias): dict(candidate)
+            for alias, candidate in _as_mapping(
+                fabric_value("models", {}), "fabric.models"
+            ).items()
+            if isinstance(candidate, dict)
+        },
+        capsule_max_archive_bytes=_as_int(
+            value("capsule_max_archive_bytes", 100 * 1024 * 1024),
+            "capsule_max_archive_bytes", 1024,
+        ),
+        capsule_max_files=_as_int(
+            value("capsule_max_files", 1000), "capsule_max_files", 1,
+        ),
+        capsule_max_file_bytes=_as_int(
+            value("capsule_max_file_bytes", 20 * 1024 * 1024),
+            "capsule_max_file_bytes", 1024,
+        ),
+        capsule_max_uncompressed_bytes=_as_int(
+            value("capsule_max_uncompressed_bytes", 200 * 1024 * 1024),
+            "capsule_max_uncompressed_bytes", 1024,
+        ),
+        capsule_max_compression_ratio=_as_int(
+            value("capsule_max_compression_ratio", 100),
+            "capsule_max_compression_ratio", 1,
+        ),
         browser_enabled=_as_bool(value("browser_enabled", False), "browser_enabled"),
         browser_allowed_domains=_as_str_tuple(
             value("browser_allowed_domains", []), "browser_allowed_domains"
@@ -697,6 +956,34 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         raise ConfigError("memory_write_policy must be 'explicit' or 'consolidate'")
     if not isinstance(settings.tool_permissions, dict):
         raise ConfigError("tool_permissions must be a mapping")
+    if not isinstance(settings.trust_policy, dict):
+        raise ConfigError("trust must be a mapping")
+    if settings.fabric_default_mode not in {"quick", "standard", "agent", "deep"}:
+        raise ConfigError("fabric_default_mode must be quick, standard, agent, or deep")
+    if settings.fabric_routing_policy not in {
+        "local_only", "local_first", "balanced", "quality_first"
+    }:
+        raise ConfigError(
+            "fabric.routing_policy must be local_only, local_first, balanced, or quality_first"
+        )
+    allowed_weights = {"capability", "preference", "performance", "latency", "cost", "local"}
+    unknown_weights = set(settings.fabric_weights) - allowed_weights
+    if unknown_weights:
+        raise ConfigError(
+            "fabric.weights contains unknown values: " + ", ".join(sorted(unknown_weights))
+        )
+    if any(not 0 <= weight <= 1 for weight in settings.fabric_weights.values()):
+        raise ConfigError("fabric.weights values must be between 0 and 1")
+    if sum(settings.fabric_weights.values()) <= 0:
+        raise ConfigError("fabric.weights must contain at least one positive value")
+    raw_models = fabric_value("models", {})
+    if any(not isinstance(candidate, dict) for candidate in _as_mapping(raw_models, "fabric.models").values()):
+        raise ConfigError("each fabric.models candidate must be a mapping")
+    # Registry construction is validation-only here: it never resolves a
+    # credential or performs a network request.
+    from tieru.fabric.candidates import CandidateRegistry
+
+    CandidateRegistry(settings)
     if used:
         _warn_legacy(
             "Using deprecated Waku compatibility settings: "

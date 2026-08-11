@@ -1,6 +1,6 @@
 """One SQLite file (state.db) holds everything Tieru remembers and does.
 
-This mirrors the Hermes approach on the whiteboard: SQLite + FTS5, no server.
+SQLite + FTS5 keeps the default memory source inspectable and requires no server.
 Open it yourself anytime:  sqlite3 .tieru/state.db '.tables'
 """
 
@@ -84,6 +84,175 @@ CREATE TABLE IF NOT EXISTS chat_log (
     session_id TEXT DEFAULT 'default',
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Tieru Memory Graph: an additive typed relationship layer. Existing facts,
+-- episodes, skills, and chat rows remain independent and authoritative in
+-- their current stores; graph population begins only through explicit writes.
+CREATE TABLE IF NOT EXISTS graph_entities (
+    id INTEGER PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    UNIQUE(entity_type, normalized_name)
+);
+
+CREATE TABLE IF NOT EXISTS graph_relations (
+    id INTEGER PRIMARY KEY,
+    subject_id INTEGER NOT NULL REFERENCES graph_entities(id),
+    predicate TEXT NOT NULL,
+    object_id INTEGER NOT NULL REFERENCES graph_entities(id),
+    confidence REAL NOT NULL DEFAULT 0.8 CHECK(confidence BETWEEN 0.0 AND 1.0),
+    importance REAL NOT NULL DEFAULT 0.5 CHECK(importance BETWEEN 0.0 AND 1.0),
+    source_type TEXT NOT NULL DEFAULT 'explicit_user_save',
+    source_ref TEXT NOT NULL DEFAULT '',
+    valid_from TEXT NOT NULL DEFAULT '',
+    valid_to TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK(status IN ('active', 'superseded', 'contradicted', 'archived')),
+    superseded_by INTEGER REFERENCES graph_relations(id),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS graph_entities_normalized_name_idx
+    ON graph_entities(normalized_name);
+CREATE INDEX IF NOT EXISTS graph_entities_type_idx
+    ON graph_entities(entity_type);
+CREATE INDEX IF NOT EXISTS graph_relations_subject_idx
+    ON graph_relations(subject_id);
+CREATE INDEX IF NOT EXISTS graph_relations_object_idx
+    ON graph_relations(object_id);
+CREATE INDEX IF NOT EXISTS graph_relations_predicate_idx
+    ON graph_relations(predicate);
+CREATE INDEX IF NOT EXISTS graph_relations_status_idx
+    ON graph_relations(status);
+
+-- Tieru Replay: bounded, normalized observability for one user turn. Replay is
+-- deliberately separate from chat_log and memory so retention can remove
+-- telemetry without deleting conversations or anything Tieru remembers.
+CREATE TABLE IF NOT EXISTS replay_runs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL DEFAULT 'default',
+    source TEXT NOT NULL DEFAULT 'cli',
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    role TEXT NOT NULL DEFAULT 'main',
+    model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    iterations INTEGER NOT NULL DEFAULT 0,
+    latency_ms INTEGER,
+    event_count INTEGER NOT NULL DEFAULT 0,
+    tool_count INTEGER NOT NULL DEFAULT 0,
+    trust_decision_count INTEGER NOT NULL DEFAULT 0,
+    input_preview TEXT NOT NULL DEFAULT '',
+    output_preview TEXT NOT NULL DEFAULT '',
+    error_code TEXT NOT NULL DEFAULT '',
+    error_summary TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS replay_events (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES replay_runs(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL,
+    timestamp TEXT NOT NULL,
+    category TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    node TEXT NOT NULL DEFAULT '',
+    tool TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    duration_ms INTEGER,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(run_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS replay_events_run_sequence_idx
+    ON replay_events(run_id, sequence);
+CREATE INDEX IF NOT EXISTS replay_runs_session_idx
+    ON replay_runs(session_id);
+CREATE INDEX IF NOT EXISTS replay_runs_started_idx
+    ON replay_runs(started_at);
+CREATE INDEX IF NOT EXISTS replay_runs_status_idx
+    ON replay_runs(status);
+
+-- Tieru Shadow: passive, local aggregation over Forge-compatible Replay
+-- structure. These rows are operational suggestions, never Memory or policy.
+CREATE TABLE IF NOT EXISTS shadow_patterns (
+    id TEXT PRIMARY KEY,
+    workflow_signature TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'observing',
+    occurrence_count INTEGER NOT NULL DEFAULT 0,
+    successful_count INTEGER NOT NULL DEFAULT 0,
+    verification_count INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    evidence_json TEXT NOT NULL DEFAULT '[]',
+    tools_json TEXT NOT NULL DEFAULT '[]',
+    operations_json TEXT NOT NULL DEFAULT '[]',
+    capabilities_json TEXT NOT NULL DEFAULT '[]',
+    confidence TEXT NOT NULL DEFAULT 'low',
+    suppress_until_count INTEGER NOT NULL DEFAULT 0,
+    snoozed_until TEXT NOT NULL DEFAULT '',
+    forge_draft_id TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS shadow_suggestions (
+    id TEXT PRIMARY KEY,
+    pattern_id TEXT NOT NULL UNIQUE REFERENCES shadow_patterns(id) ON DELETE CASCADE,
+    workflow_signature TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ready',
+    occurrence_count INTEGER NOT NULL,
+    confidence TEXT NOT NULL,
+    representative_runs_json TEXT NOT NULL DEFAULT '[]',
+    suggested_name TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    tools_json TEXT NOT NULL DEFAULT '[]',
+    capabilities_json TEXT NOT NULL DEFAULT '[]',
+    explanation_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    snoozed_until TEXT NOT NULL DEFAULT '',
+    forge_draft_id TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS shadow_observations (
+    run_id TEXT PRIMARY KEY,
+    pattern_id TEXT NOT NULL DEFAULT '',
+    result TEXT NOT NULL,
+    observed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS shadow_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS shadow_patterns_status_idx ON shadow_patterns(status);
+CREATE INDEX IF NOT EXISTS shadow_patterns_last_seen_idx ON shadow_patterns(last_seen_at);
+CREATE INDEX IF NOT EXISTS shadow_suggestions_status_idx ON shadow_suggestions(status);
+
+-- Tieru Capsule: safe operational provenance only. Capsule contents are never
+-- duplicated here, and deleting an archive does not affect imported state.
+CREATE TABLE IF NOT EXISTS capsule_audits (
+    id TEXT PRIMARY KEY,
+    operation TEXT NOT NULL CHECK(operation IN ('export', 'import')),
+    capsule_id TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    scopes_json TEXT NOT NULL DEFAULT '[]',
+    target_name TEXT NOT NULL DEFAULT '',
+    create_count INTEGER NOT NULL DEFAULT 0,
+    skip_count INTEGER NOT NULL DEFAULT 0,
+    conflict_count INTEGER NOT NULL DEFAULT 0,
+    warnings_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS capsule_audits_capsule_idx ON capsule_audits(capsule_id);
 """
 
 
@@ -135,6 +304,7 @@ def connect(home: Path, check_same_thread: bool = True) -> sqlite3.Connection:
     # avoids "database is locked" when the dashboard reads while a chat writes.
     conn = sqlite3.connect(home / "state.db", check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=3000")
     conn.executescript(SCHEMA)
     _migrate(conn)

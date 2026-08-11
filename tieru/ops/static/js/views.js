@@ -26,7 +26,16 @@ const DB_DESC = {
   calendar_events: "events the create_event tool wrote (the flagship task)",
   facts: "semantic memory — durable facts (Memory ▸ Semantic)",
   episodes: "episodic memory — dated summaries (Memory ▸ Episodic)",
+  graph_entities: "Memory Graph — typed entities (Memory ▸ Graph)",
+  graph_relations: "Memory Graph — typed, temporal relations with provenance",
   chat_log: "every message, tagged by session_id — consolidation reads from here",
+  replay_runs: "Replay — one bounded status/summary row per observed Tieru turn",
+  replay_events: "Replay — normalized, sequence-ordered, redacted event metadata",
+  shadow_patterns: "Shadow — bounded structural workflow aggregates",
+  shadow_suggestions: "Shadow — explainable, user-controlled Forge suggestions",
+  shadow_observations: "Shadow — idempotent per-Replay-run processing ledger",
+  shadow_settings: "Shadow — persisted local enable/disable override",
+  capsule_audits: "Capsule — safe export/import provenance and outcome counts",
 };
 const QUERY_EXAMPLES = [
   "SELECT role, content FROM chat_log ORDER BY id DESC LIMIT 10",
@@ -63,10 +72,12 @@ async function runQuery(){
 // the Data tab shows the SAME rows as raw SQLite tables (see the explainer).
 function memOverview(d){
   const s = d.stats;
+  const mg = d.memory_graph || {entities:[],relations:[]};
   const pillars = [
     ["Semantic","semantic",d.facts.length+" facts","durable, distilled facts about you and your people"],
     ["Episodic","episodic",d.episodes.length+" episodes","dated summaries and events — stays small on purpose"],
     ["Procedural","skills",d.skills.length+" skills","SKILL.md files loaded only when relevant — how to act"],
+    ["Graph","graph",mg.relations.length+" relations","typed entities, relationships, provenance, and change over time"],
   ].map(([t,sub,n,desc]) => `<div class="box" style="min-width:0" onclick="location.hash='memory/${sub}'">
       <b>${t} <span class="meta" style="font-weight:400">· ${n}</span></b><span>${desc}</span></div>`).join("");
   return `<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
@@ -75,17 +86,41 @@ function memOverview(d){
       <a class="reveal" onclick="location.hash='database'">Database tab</a> shows the exact same
       thing as raw SQLite tables (plus the FTS5 keyword index). Same
       <code>.tieru/state.db</code> — different altitude.
-      <br><br>Some assistants (Hermes) keep memory as a single <code>MEMORY.md</code> file. Tieru keeps
-      the queryable source in <code>state.db</code> (facts + episodes, FTS5-searchable) <b>and</b> writes a
+      <br><br>Tieru keeps its queryable source in <code>state.db</code> (facts + episodes,
+      FTS5-searchable) <b>and</b> writes a
       human-readable ${reveal("MEMORY.md","MEMORY.md")} mirror after every turn — so you get both: a real file
       you can open, backed by a sturdy database.</div></div>
-    <h2>The three pillars</h2>
+    <h2>The four memory capabilities</h2>
     <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${pillars}</div>
     <h2>Retrieval gate — does this turn even need memory?</h2>${gateSplit(s)}
     <div class="meta" style="margin-top:8px">A cheap model decides <b>if</b> a turn needs memory at all, before any lookup —
       this is memory <i>retrieval</i>, the hero decision. (The Ops tab charts the same skip/retrieve
       numbers as an operational metric; the decision itself is memory's.)</div>
     <div class="meta" style="margin-top:14px">Files: ${reveal("state.db","state.db")} · ${reveal("MEMORY.md","MEMORY.md")} · ${reveal("SOUL.md","SOUL.md")} · ${reveal("skills","skills/")}</div>`;
+}
+function memGraph(d){
+  const mg = d.memory_graph || {entities:[],relations:[]};
+  let h = `<div class="card" style="background:var(--accent-soft);border-color:var(--line2)">
+    <b>Tieru Memory Graph is an additive SQLite view.</b> <span class="r">Relations are stored only
+    through explicit graph-aware memory operations. Existing facts, episodes, and skills remain
+    unchanged, and no conversation is converted automatically.</span></div>`;
+  h += `<h2>Entities <span class="meta" style="font-weight:400">· ${mg.entities.length}</span></h2>`;
+  h += table(["id","name","type","updated"], mg.entities.map(e =>
+    `<tr><td class="meta">entity:${e.id}</td><td>${esc(e.canonical_name)}</td>
+      <td><code>${esc(e.entity_type)}</code></td><td class="meta">${esc(e.updated_at)}</td></tr>`));
+  h += `<h2>Relations <span class="meta" style="font-weight:400">· ${mg.relations.length}</span></h2>`;
+  h += table(["id","subject","predicate","object","confidence","importance","status","source"],
+    mg.relations.map(x => { const r=x.relation, p=x.provenance;
+      return `<tr><td class="meta">relation:${r.id}</td>
+        <td>${esc(x.subject.canonical_name)} <span class="meta">${esc(x.subject.entity_type)}</span></td>
+        <td><code>${esc(r.predicate)}</code></td>
+        <td>${esc(x.object.canonical_name)} <span class="meta">${esc(x.object.entity_type)}</span></td>
+        <td class="meta">${Number(r.confidence).toFixed(2)}</td>
+        <td class="meta">${Number(r.importance).toFixed(2)}</td>
+        <td><span class="pill ${r.status==='active'?'pass':'skip'}">${esc(r.status)}</span></td>
+        <td class="meta">${esc(p.source_type)}${p.source_ref?` · ${esc(p.source_ref)}`:""}</td></tr>`;
+    }));
+  return h || `<div class="card empty">no graph memory yet</div>`;
 }
 function memSemantic(d){
   let h = `<div class="meta" style="margin-bottom:12px">Durable facts distilled from what you tell Tieru —
@@ -204,10 +239,101 @@ function toolsMCP(t){
   return h;
 }
 
+let REPLAY_DETAIL = null, REPLAY_LOADING = "";
+async function loadReplayDetail(runId){
+  if (REPLAY_LOADING === runId) return;
+  REPLAY_LOADING = runId;
+  try {
+    const response = await fetch(`/api/replay/${encodeURIComponent(runId)}`);
+    REPLAY_DETAIL = await response.json();
+  } catch (e) {
+    REPLAY_DETAIL = {run_id:runId, error:String(e)};
+  } finally {
+    REPLAY_LOADING = "";
+    const [, current] = (location.hash||"").slice(1).split("/");
+    if (current === runId) render();
+  }
+}
+
+let FORGE_DETAIL = null, FORGE_LOADING = "";
+async function loadForgeDetail(draftId){
+  if (FORGE_LOADING === draftId) return;
+  FORGE_LOADING = draftId;
+  try {
+    const response = await fetch(`/api/forge/${encodeURIComponent(draftId)}`);
+    FORGE_DETAIL = await response.json();
+  } catch(e){ FORGE_DETAIL = {draft_id:draftId,error:String(e)}; }
+  FORGE_LOADING = ""; render();
+}
+async function forgeAction(action, draftId, approved=false){
+  const body = {action, draft_id:draftId, approved};
+  if (action === "forge"){
+    body.run_ids = [...document.querySelectorAll(".forge-run:checked")].map(x=>x.value);
+  }
+  const result = await postJSON("/api/forge", body);
+  if (result.error){ alert(result.error); return; }
+  FORGE_DETAIL = result; await refresh();
+  if (result.draft_id) location.hash = `forge/${result.draft_id}`;
+}
+
+let SHADOW_DETAIL = null, SHADOW_LOADING = "";
+async function loadShadowDetail(suggestionId){
+  if (SHADOW_LOADING === suggestionId) return;
+  SHADOW_LOADING = suggestionId;
+  try {
+    const response = await fetch(`/api/shadow/${encodeURIComponent(suggestionId)}`);
+    SHADOW_DETAIL = await response.json();
+  } catch(e){ SHADOW_DETAIL = {error:String(e)}; }
+  SHADOW_LOADING = ""; render();
+}
+async function shadowAction(action, suggestionId=""){
+  const result = await postJSON("/api/shadow", {action, suggestion_id:suggestionId});
+  if (result.error){ alert(result.error); return; }
+  if (action === "forge" && result.draft_id){
+    FORGE_DETAIL = result; await refresh(); location.hash=`forge/${result.draft_id}`; return;
+  }
+  SHADOW_DETAIL = null; await refresh(); location.hash="#shadow";
+}
+
+let CAPSULE_RESULT = null;
+async function capsuleAction(action){
+  editing = true;
+  const filename = (document.getElementById("capsule-file")||{}).value || "my-tieru.tieru";
+  const include = ["replay","forge","shadow"].filter(x => (document.getElementById(`cap-${x}`)||{}).checked);
+  const body = {action, filename, profile:"portable", include};
+  if (action === "import") {
+    if (!confirm("Import the verified preview? Existing conflicts will be retained and Trust rules stay inactive.")) return;
+    body.confirmed = true;
+  }
+  CAPSULE_RESULT = await postJSON("/api/capsule", body);
+  render();
+}
+
+function capsuleView(){
+  const result = CAPSULE_RESULT;
+  const summary = result ? `<h2>Result</h2><pre>${esc(JSON.stringify(result,null,2))}</pre>` : "";
+  return `<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+    <b>Your AI identity belongs to you, not a provider or device.</b>
+    <div class="r" style="margin-top:6px">Capsules are offline, selective snapshots. Secrets are structurally excluded; importing never creates a live sync link or grants authority.</div></div>
+    <h2>Export</h2><div class="card"><label>Filename in <code>TIERU_HOME/capsules</code><br>
+    <input id="capsule-file" value="my-tieru.tieru" onfocus="markEditing()" style="margin-top:6px;max-width:360px"></label>
+    <div style="margin:10px 0"><b>Portable:</b> persona, Memory + Graph, user skills, preferences, pending-review Trust, Fabric.</div>
+    <label><input type="checkbox" id="cap-replay"> Replay history</label> &nbsp;
+    <label><input type="checkbox" id="cap-forge"> inactive Forge drafts</label> &nbsp;
+    <label><input type="checkbox" id="cap-shadow"> advisory Shadow metadata</label>
+    <div class="meta" style="margin:8px 0">API keys, credentials, auth headers, caches, traces, and temporary files are always excluded.</div>
+    <button class="save" onclick="capsuleAction('export')">Export Capsule</button></div>
+    <h2>Inspect / import</h2><div class="card"><div class="meta" style="margin-bottom:8px">Place a Capsule in <code>TIERU_HOME/capsules</code>, enter its filename above, then verify and preview. Execution requires a separate confirmation.</div>
+    <button onclick="capsuleAction('inspect')">Inspect integrity</button>
+    <button onclick="capsuleAction('preview')">Preview ImportPlan</button>
+    <button class="save" onclick="capsuleAction('import')">Execute confirmed import</button></div>${summary}`;
+}
+
 const VIEWS = {
+  capsule(){ return capsuleView(); },
   // Gateway: ONE unified conversation across every channel (dashboard, telegram,
   // voice, cli) — the same loop + memory answer all of them. Each message is
-  // tagged with where it came in, Hermes-style. You type in the dock on the right.
+  // tagged with where it came in. You type in the dock on the right.
   // Gateway = an INBOX of conversations (like Slack/Intercom): one row per
   // conversation, tagged with its channel(s). Click one to open it in the chat
   // dock (the active thread). No longer a flat stream that duplicates the dock.
@@ -237,7 +363,11 @@ const VIEWS = {
         [s.turns,"turns",""],[s.tool_calls,"tool calls",""],
         [d.facts.length,"facts",""],[d.calendar.length,"events",""],
       ].map(([v,l,c])=>`<div class="tile"><b class="${c}">${v}</b><span>${l}</span></div>`).join("");
-    return `<div class="tiles">${tiles}</div>
+    return `<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+      <b>Tieru — Local-first Personal AI Runtime.</b>
+      <div class="r" style="margin-top:6px">One memory. Any model. Your rules. Inspect the runtime,
+      memory, models, tools, permission decisions, traces, and evaluations from this local dashboard.</div>
+    </div><div class="tiles">${tiles}</div>
     <h2>Retrieval gate — the hero decision</h2>${gateSplit(s)}
     <h2 style="margin-top:26px">Architecture — click any box <span class="arch-status"></span></h2>
     ${archSVG(d)}
@@ -304,13 +434,16 @@ const VIEWS = {
   },
   memory(d, sub){
     sub = sub || "overview";
+    const mg = d.memory_graph || {entities:[],relations:[]};
     const tabs = [["overview","Overview"],["semantic","Semantic",d.facts.length],
       ["episodic","Episodic",d.episodes.length],["skills","Skills",d.skills.length],
-      ["soul","SOUL"],["consolidation","Consolidation",d.chat_pending]];
+      ["graph","Graph",mg.relations.length],["soul","SOUL"],
+      ["consolidation","Consolidation",d.chat_pending]];
     let h = subtabBar("memory", tabs, sub);
     if (sub==="semantic") return h + memSemantic(d);
     if (sub==="episodic") return h + memEpisodic(d);
     if (sub==="skills") return h + memSkills(d);
+    if (sub==="graph") return h + memGraph(d);
     if (sub==="soul") return h + memSoul(d);
     if (sub==="consolidation") return h + memConsolidation(d);
     return h + memOverview(d);
@@ -436,6 +569,164 @@ const VIEWS = {
     }
     return h;
   },
+  replay(d, sub){
+    const replay = d.replay || {runs:[],retention:{}};
+    if (sub){
+      if (!REPLAY_DETAIL || REPLAY_DETAIL.run_id !== sub){
+        loadReplayDetail(sub);
+        return `<div class="card empty">loading Replay run <code>${esc(sub)}</code>…</div>`;
+      }
+      if (REPLAY_DETAIL.error)
+        return `<div class="card"><span class="pill fail">unavailable</span> ${esc(REPLAY_DETAIL.error)}</div>`;
+      const run = REPLAY_DETAIL, summary = run.summary || {}, events = run.events || [];
+      let h = `<div style="margin-bottom:12px"><a class="reveal" onclick="location.hash='replay'">&larr; all runs</a></div>
+        <div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+          <div class="tn"><code>${esc(run.run_id)}</code> <span class="pill ${run.status==='completed'?'pass':run.status==='failed'?'fail':'skip'}">${esc(run.status)}</span></div>
+          <div class="meta">${esc(run.source)} · session ${esc(run.session_id)} · ${esc(run.provider||'—')} / ${esc(run.model||'—')} · ${run.latency_ms==null?'running':esc(run.latency_ms)+'ms'} · ${esc(run.iterations)} iteration(s)</div>
+          ${run.error_summary?`<div class="r" style="margin-top:8px"><b>${esc(run.error_code)}</b> · ${esc(run.error_summary)}</div>`:""}
+        </div>`;
+      h += `<h2>Deterministic summary</h2><div class="card"><b>${esc(summary.sentence||"")}</b>
+        <div class="meta" style="margin-top:7px">Tools: ${esc(JSON.stringify(summary.tools||{}))} · Trust: ${esc(JSON.stringify(summary.trust||{}))} · Memory: ${esc((summary.memory||[]).join(', ')||'none')}</div></div>`;
+      h += `<h2>Ordered timeline</h2><div class="meta" style="margin-bottom:10px">Observable events and structured system decisions only. Replay never stores or invents private chain-of-thought.</div>`;
+      h += events.length ? `<div class="card">${events.map(e => {
+        const subject=e.tool||e.model||e.node||"";
+        const dur=e.duration_ms==null?"":` · ${esc(e.duration_ms)}ms`;
+        return `<div style="display:grid;grid-template-columns:42px 92px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+          <div class="meta" style="font-family:var(--mono)">${String(e.sequence).padStart(2,'0')}</div>
+          <div><span class="srcpill">${esc(e.category)}</span></div>
+          <div><b>${esc(e.event_type)}</b>${subject?` · <code>${esc(subject)}</code>`:""}<span class="meta">${dur}</span>
+            ${Object.keys(e.safe_payload||{}).length?`<details style="margin-top:5px"><summary class="meta">safe details</summary><pre>${esc(JSON.stringify(e.safe_payload,null,2))}</pre></details>`:""}</div></div>`;
+      }).join("")}</div>` : `<div class="card empty">no events recorded</div>`;
+      return h;
+    }
+    const runs = replay.runs || [], limits = replay.retention || {};
+    let h = `<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+      <b>Every important Tieru action should be inspectable after the run.</b>
+      <div class="r" style="margin-top:6px">Replay is local, read-only observation: ordered lifecycle, memory, model, routing, Trust, tool, error, and output metadata. Viewing a run never executes tools or side effects.</div></div>`;
+    h += `<div class="meta" style="margin:10px 0">Retention: ${esc(limits.max_runs||0)} runs / ${esc(limits.max_age_days||0)} days · event payloads ≤ ${esc(limits.max_event_payload_bytes||0)} bytes · tool previews ≤ ${esc(limits.max_tool_output_bytes||0)} bytes. Replay cleanup does not delete chat or Memory.</div>`;
+    h += runs.length ? table(["run","time","status","source","model","duration","tools"], runs.map(r =>
+      `<tr><td><a class="reveal" onclick="location.hash='replay/${esc(r.run_id)}'"><code>${esc(r.run_id)}</code></a></td>
+       <td class="meta">${esc((r.started_at||'').replace('T',' ').slice(0,19))}</td>
+       <td><span class="pill ${r.status==='completed'?'pass':r.status==='failed'?'fail':'skip'}">${esc(r.status)}</span></td>
+       <td class="meta">${esc(r.source)}</td><td class="meta">${esc(r.model||'—')}</td>
+       <td class="meta">${r.latency_ms==null?'—':esc(r.latency_ms)+'ms'}</td><td class="meta">${esc(r.tool_count)}</td></tr>`))
+      : `<div class="card empty">no Replay runs yet — the next Tieru turn will appear here</div>`;
+    return h;
+  },
+  shadow(d, sub){
+    const shadow=d.shadow||{status:{},patterns:[],suggestions:[]};
+    const st=shadow.status||{};
+    if (sub){
+      if (!SHADOW_DETAIL || (SHADOW_DETAIL.suggestion||{}).suggestion_id !== sub){
+        loadShadowDetail(sub);
+        return `<div class="card empty">loading Shadow suggestion <code>${esc(sub)}</code>...</div>`;
+      }
+      if (SHADOW_DETAIL.error) return `<div class="card"><span class="pill fail">unavailable</span> ${esc(SHADOW_DETAIL.error)}</div>`;
+      const s=SHADOW_DETAIL.suggestion||{}, p=SHADOW_DETAIL.pattern||{};
+      return `<div style="margin-bottom:12px"><a class="reveal" onclick="location.hash='shadow'">&larr; Shadow overview</a></div>
+        <div class="card" style="border-color:var(--accent);background:var(--accent-soft)"><div class="tn">Repeated workflow detected <span class="pill skip">${esc((s.status||'ready').toUpperCase())}</span></div><div class="r" style="margin-top:6px">${esc(s.summary)}</div></div>
+        <h2>Why am I seeing this?</h2><div class="card">${(s.explanation||[]).map(x=>`<div style="margin:5px 0">&bull; ${esc(x)}</div>`).join('')}</div>
+        <h2>Pattern evidence</h2><div class="card"><b>${esc(p.occurrence_count)} occurrences &middot; ${esc(p.confidence)} confidence</b>
+          <div class="meta" style="margin-top:7px">First seen ${esc(p.first_seen_at)} &middot; last seen ${esc(p.last_seen_at)}</div>
+          <div class="meta">Representative runs: ${(s.representative_run_ids||[]).map(id=>`<code>${esc(id)}</code>`).join(' ')}</div>
+          <div class="meta">Tools: ${esc((s.required_tools||[]).join(', '))}</div>
+          <div class="meta">Capabilities: ${esc((s.required_capabilities||[]).join(', ')||'none')}</div></div>
+        <h2>Common steps</h2>${(p.representative_operations||[]).map((op,i)=>`<div class="card"><b>${i+1}. ${esc(op)}</b>${p.representative_tools[i]?`<div class="meta">tool <code>${esc(p.representative_tools[i])}</code></div>`:''}</div>`).join('')}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="save" onclick="shadowAction('forge','${esc(s.suggestion_id)}')">Forge Skill</button><button onclick="shadowAction('ignore','${esc(s.suggestion_id)}')">Ignore</button><button onclick="shadowAction('snooze','${esc(s.suggestion_id)}')">Snooze</button><button onclick="shadowAction('dismiss','${esc(s.suggestion_id)}')">Dismiss</button></div>
+        <div class="meta" style="margin-top:10px">Forge Skill creates an inactive M9 draft only. It does not validate, approve, install, execute, or grant permission.</div>`;
+    }
+    let h=`<div class="card" style="border-color:var(--accent);background:var(--accent-soft)"><b>Shadow observes. Forge creates. Trust authorizes. You decide.</b><div class="r" style="margin-top:6px">Shadow groups completed Tieru Replay workflows by secret-safe structure. It never watches OS activity, executes tools, creates active skills, or changes policy.</div></div>`;
+    h += `<div class="tiles">${[[st.enabled?'enabled':'disabled','Shadow'],[st.pattern_count||0,'patterns'],[st.suggestion_count||0,'suggestions ready'],[st.covered_count||0,'covered']].map(([v,l])=>`<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>`;
+    h += `<div style="margin:10px 0"><button onclick="shadowAction('${st.enabled?'disable':'enable'}')">${st.enabled?'Disable Shadow':'Enable Shadow'}</button><span class="meta" style="margin-left:10px">Default is disabled; disabling preserves existing metadata.</span></div>`;
+    h += `<h2>Suggestions</h2>`;
+    h += (shadow.suggestions||[]).length ? (shadow.suggestions||[]).map(s=>`<div class="toolcard" onclick="location.hash='shadow/${esc(s.suggestion_id)}'" style="cursor:pointer"><div class="tn">${esc(s.suggested_name)} <span class="pill skip">${esc(s.status)}</span></div><div class="td">${esc(s.summary)}</div><div class="meta">${esc(s.occurrence_count)} occurrences &middot; ${esc(s.confidence)} confidence</div></div>`).join('') : `<div class="card empty">no suggestions ready</div>`;
+    h += `<h2>Observed patterns</h2>`;
+    h += (shadow.patterns||[]).length ? table(["workflow","occurrences","first seen","last seen","confidence","status"],shadow.patterns.map(p=>`<tr><td class="meta">${esc((p.representative_operations||[]).join(' → '))}</td><td>${esc(p.occurrence_count)}</td><td class="meta">${esc(p.first_seen_at)}</td><td class="meta">${esc(p.last_seen_at)}</td><td>${esc(p.confidence)}</td><td><span class="pill skip">${esc(p.status)}</span></td></tr>`)) : `<div class="card empty">no patterns observed</div>`;
+    return h;
+  },
+  fabric(d){
+    // Compatibility truth: Model Fabric v1 uses execution-mode routing and
+    // does not adaptively select cloud providers; v2 preserves that first
+    // decision and adds explicit, policy-first candidate selection.
+    const f=d.fabric||{modes:[],models:[],recent_routes:[],performance:[]};
+    let h=`<div class="card" style="border-color:var(--accent);background:var(--accent-soft)"><b>Model Fabric v2 chooses execution mode, then the best eligible configured model.</b><div class="r" style="margin-top:6px">Availability, privacy, role, capability, and context rules run before deterministic scoring. Model choice never changes Trust permissions.</div></div>`;
+    h += `<div class="tiles">${[[f.enabled?'enabled':'disabled','Fabric'],[esc((f.routing_policy||'local_first').replaceAll('_',' ')),'privacy policy'],[(f.models||[]).length,'candidate models'],[esc(f.max_fallbacks||0),'max fallbacks']].map(([v,l])=>`<div class="tile"><b>${v}</b><span>${l}</span></div>`).join('')}</div>`;
+    h += `<h2>Candidate Models</h2>`;
+    h += table(["alias","provider / model","location","availability","capabilities","API cost tier","preference"],(f.models||[]).map(m=>`<tr><td><code>${esc(m.id)}</code></td><td>${esc(m.provider)}<div class="meta">${esc(m.model)}</div></td><td>${m.local?'local':'cloud'}</td><td><span class="pill ${m.availability&&m.availability.available?'pass':'skip'}">${esc((m.availability&&m.availability.reason)||'unknown')}</span></td><td class="meta">${esc(Object.entries(m.capabilities||{}).map(([k,v])=>k+':'+(v===null?'unknown':v)).join(', ')||'unknown')}</td><td>${esc(m.cost_tier||'unknown')}</td><td>${esc(m.preference)}</td></tr>`));
+    h += `<h2>Routing Policy</h2><div class="card"><b>${esc((f.routing_policy||'local_first').toUpperCase())}</b><div class="meta">TTL ${esc(f.availability_ttl_seconds)}s &middot; history minimum ${esc(f.min_history_samples)} &middot; max fallbacks ${esc(f.max_fallbacks)}</div><div class="meta">weights: ${esc(JSON.stringify(f.weights||{}))}</div></div>`;
+    h += `<h2>Execution modes</h2>`;
+    h += table(["mode","role","tokens","iterations","history","tools","memory","verification"],(f.modes||[]).map(p=>`<tr><td><b>${esc((p.mode||'').toUpperCase())}</b></td><td><code>${esc(p.role)}</code></td><td>${esc(p.max_tokens)}</td><td>${esc(p.max_iterations)}</td><td>${esc(p.history_turns)}</td><td>${p.tools_enabled?'on':'off'}</td><td>${p.memory_enabled?'on':'off'}</td><td>${p.verification_enabled?'on':'off'}</td></tr>`));
+    h += `<h2>Recent Selections</h2>`;
+    h += (f.recent_routes||[]).length ? table(["run","task / mode","candidate","model","score","fallback","latency","result"],f.recent_routes.map(r=>`<tr><td><a class="reveal" onclick="location.hash='replay/${esc(r.run_id)}'"><code>${esc(r.run_id)}</code></a></td><td>${esc(r.task_type||'—')}<div class="meta">${esc((r.execution_mode||'standard').toUpperCase())}</div></td><td><code>${esc(r.candidate_id||'—')}</code></td><td class="meta">${esc(r.provider)} / ${esc(r.model)}</td><td>${r.score==null?'—':esc(r.score)}</td><td>${r.fallback_count?esc(r.fallback_count):'no'}</td><td class="meta">${r.latency_ms==null?'—':esc(r.latency_ms)+'ms'}</td><td><span class="pill ${r.status==='completed'?'pass':'fail'}">${esc(r.status)}</span></td></tr>`)) : `<div class="card empty">no Fabric-enabled selections yet</div>`;
+    h += `<h2>Performance</h2>`;
+    h += (f.performance||[]).length ? table(["provider / model","mode / task","samples","success","median latency","routing use"],f.performance.map(p=>`<tr><td>${esc(p.provider)}<div class="meta">${esc(p.model)}</div></td><td>${esc((p.execution_mode||'any').toUpperCase())}<div class="meta">${esc(p.task_type||'any')}</div></td><td>${esc(p.sample_count)}</td><td>${p.success_rate==null?'—':esc(Math.round(p.success_rate*100))+'%'}</td><td>${p.median_latency_ms==null?'—':esc(p.median_latency_ms)+'ms'}</td><td><span class="pill ${p.sufficient_samples?'pass':'skip'}">${p.sufficient_samples?'active':'insufficient samples'}</span></td></tr>`)) : `<div class="card empty">no Replay-backed model observations yet</div>`;
+    return h;
+  },
+  forge(d, sub){
+    const forge = d.forge || {eligible_runs:[],drafts:[]};
+    if (sub){
+      if (!FORGE_DETAIL || FORGE_DETAIL.draft_id !== sub){
+        loadForgeDetail(sub);
+        return `<div class="card empty">loading Forge draft <code>${esc(sub)}</code>...</div>`;
+      }
+      if (FORGE_DETAIL.error){
+        return `<div class="card"><span class="pill fail">unavailable</span> ${esc(FORGE_DETAIL.error)}</div>`;
+      }
+      const x=FORGE_DETAIL, m=x.metadata||{}, w=x.workflow||{};
+      const v=x.validation||{}, e=x.evaluation||{};
+      return `<div style="margin-bottom:12px"><a class="reveal" onclick="location.hash='forge'">&larr; all drafts</a></div>
+        <div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+          <div class="tn">${esc(m.name||m.skill_id)} <span class="pill ${m.status==='installed'?'pass':m.status==='evaluation_failed'?'fail':'skip'}">${esc((m.status||'draft').toUpperCase())}</span></div>
+          <div class="meta"><code>${esc(x.draft_id)}</code> &middot; version ${esc(m.version||1)} &middot; generator ${esc((m.generation||{}).provider||'local')} / ${esc((m.generation||{}).model||(m.generation||{}).method||'template')}</div></div>
+        <h2>Provenance and requirements</h2><div class="card"><b>Source runs</b>: ${(w.source_run_ids||[]).map(id=>`<code>${esc(id)}</code>`).join(' ')}
+          <div class="meta" style="margin-top:8px">Inputs: ${esc(JSON.stringify(w.inputs||[]))}</div>
+          <div class="meta">Tools: ${esc((w.tools||[]).join(', ')||'none')} &middot; capabilities: ${esc((w.capabilities||[]).join(', ')||'none')}</div>
+          <div class="meta">Workflow signature: <code>${esc(w.workflow_signature||'')}</code></div></div>
+        <h2>Workflow steps</h2>${(w.steps||[]).map(s=>`<div class="card"><b>${esc(s.step_id)} &middot; ${esc(s.operation)}</b> <span class="pill ${s.status==='completed'?'pass':'skip'}">${esc(s.status)}</span><div class="meta">tool <code>${esc(s.tool)}</code> &middot; evidence ${(s.evidence||[]).length}</div></div>`).join('')}
+        <h2>Validation and evaluation</h2><div class="card">
+          <div>Validation: <span class="pill ${v.passed?'pass':Object.keys(v).length?'fail':'skip'}">${v.passed?'passed':Object.keys(v).length?'failed':'not run'}</span></div>
+          <div style="margin-top:6px">Behavioral consistency: <span class="pill ${e.deterministic_pass?'pass':Object.keys(e).length?'fail':'skip'}">${e.deterministic_pass?'passed':Object.keys(e).length?'failed':'not run'}</span> &middot; judge ${esc((e.judge||{}).status||'not run')}</div>
+          ${(m.warnings||[]).map(z=>`<div class="meta" style="margin-top:6px">Warning: ${esc(z)}</div>`).join('')}</div>
+        <div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="forgeAction('validate','${esc(x.draft_id)}')">Revalidate</button>
+          <button onclick="forgeAction('evaluate','${esc(x.draft_id)}')">Evaluate</button>
+          <button class="save" onclick="forgeAction('install','${esc(x.draft_id)}',true)">Approve / Install</button>
+          <button onclick="forgeAction('reject','${esc(x.draft_id)}')">Reject</button></div>
+        <h2>SKILL.md preview</h2><pre>${esc(x.content||'')}</pre>`;
+    }
+    let h=`<div class="card" style="border-color:var(--accent);background:var(--accent-soft)"><b>You choose the evidence; you own the final skill.</b><div class="r" style="margin-top:6px">Forge deterministically extracts selected successful Replay runs, creates an inactive local draft, and requires validation, evaluation, review, approval, and Trust-authorized installation.</div></div>`;
+    h += `<h2>Eligible Replay runs</h2>`;
+    h += forge.eligible_runs.length ? `<div class="card">${forge.eligible_runs.map(r=>`<label style="display:block;padding:6px"><input class="forge-run" type="checkbox" value="${esc(r.run_id)}"> <code>${esc(r.run_id)}</code> &middot; ${esc(r.input_preview||r.source)}</label>`).join('')}<button class="save" style="margin-top:8px" onclick="forgeAction('forge','')">Generate Draft</button></div>` : `<div class="card empty">no completed Replay runs are eligible</div>`;
+    h += `<h2>Drafts</h2>`;
+    h += forge.drafts.length ? table(["draft","skill","status","sources"],forge.drafts.map(x=>`<tr><td><a class="reveal" onclick="location.hash='forge/${esc(x.draft_id)}'"><code>${esc(x.draft_id)}</code></a></td><td>${esc(x.skill_id)}</td><td><span class="pill skip">${esc(x.status)}</span></td><td class="meta">${esc((x.source_run_ids||[]).length)}</td></tr>`)) : `<div class="card empty">no Forge drafts yet</div>`;
+    return h;
+  },
+  trust(d){
+    const t = d.trust || {canonical_capabilities:[],risk_baseline:{},capabilities:{},recent_decisions:[]};
+    let h = `<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
+      <b>The model may request an action. Tieru Trust Kernel decides whether it executes.</b>
+      <div class="r" style="margin-top:6px">Risk classification and policy evaluation are deterministic,
+      run outside the prompt, and fail closed. Approval means allow this exact action once; it never
+      creates a permanent rule.</div></div>`;
+    h += `<h2>Policy precedence</h2><div class="card"><code>${(t.precedence||[]).map(esc).join(" > ")}</code>
+      <div class="meta" style="margin-top:8px">Default: ${esc(String(t.default||"deny"))}</div></div>`;
+    h += `<h2>Canonical capabilities</h2>`;
+    h += table(["capability","baseline risk","configured behavior / scope"],
+      (t.canonical_capabilities||[]).map(c => {
+        const rule=(t.capabilities||{})[c];
+        return `<tr><td><code>${esc(c)}</code></td><td class="meta">${esc((t.risk_baseline||{})[c]||"")}</td>
+          <td class="meta">${rule===undefined?"tool-declared compatible default":esc(JSON.stringify(rule))}</td></tr>`;
+      }));
+    h += `<h2>Recent safe decisions</h2>`;
+    h += (t.recent_decisions||[]).length ? table(["tool","capability","risk","decision","reasons"],
+      t.recent_decisions.map(x => `<tr><td><code>${esc(x.tool)}</code></td>
+        <td class="meta">${esc((x.capability||[]).join(", "))}</td><td>${esc(x.risk)}</td>
+        <td><span class="pill ${x.allowed?"pass":"skip"}">${x.allowed?"allowed":"denied"}</span></td>
+        <td class="meta">${esc((x.reason_codes||[]).join(", "))}</td></tr>`))
+      : `<div class="card empty">no trust decisions yet</div>`;
+    h += `<div class="meta" style="margin-top:10px">Recent rows contain safe decision metadata only—never action secrets or full arguments. This is operational inspection, not Replay.</div>`;
+    return h;
+  },
   database(d, sub){
     // The persistence layer itself — one SQLite file, real tables, FTS5 index.
     // "Data" in the nav (plainer than "state.db"), but we keep saying state.db
@@ -461,8 +752,8 @@ const VIEWS = {
     h += `<div class="card" style="border-color:var(--accent);background:var(--accent-soft)">
       <b>Database vs Memory.</b> <span class="r">This is the raw persistence layer — the literal SQLite
       tables. The <a class="reveal" onclick="location.hash='memory'">Memory tab</a> is the friendly
-      view of the same rows (facts, episodes, skills, persona). One file, two altitudes. Where Hermes
-      uses a <code>MEMORY.md</code> file, Tieru uses these queryable tables — and mirrors them to a
+      view of the same rows (facts, episodes, skills, persona). One file, two altitudes. Tieru uses
+      these queryable tables and mirrors them to a
       readable <code>MEMORY.md</code> too.</span></div>`;
     h += `<div class="card">
       <div class="u" style="font-family:var(--mono);font-size:12.5px;word-break:break-all">${esc(db.path)}</div>

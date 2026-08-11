@@ -21,11 +21,14 @@ console = Console()
 
 def _confirm_tool(request: PermissionRequest) -> bool:
     """The CLI is the only gateway that can synchronously ask for consent."""
-    console.print(
-        f"[yellow]Permission required:[/yellow] {request.tool} "
-        f"(risk={request.risk}, capabilities={', '.join(request.capabilities)})"
-    )
-    console.print(f"  arguments: {request.args}")
+    console.print(f"[yellow]Tieru wants to {request.operation or 'run'}:[/yellow] {request.tool}")
+    if request.target:
+        console.print(f"  target: {request.target}")
+    console.print(f"  risk: {request.risk}")
+    console.print(f"  reason: {request.reason}")
+    console.print(f"  capabilities: {', '.join(request.capabilities) or 'none'}")
+    if request.args:
+        console.print(f"  safe arguments: {request.args}")
     answer = console.input("[bold yellow]Allow once? [y/N][/bold yellow] ").strip().lower()
     return answer in {"y", "yes"}
 

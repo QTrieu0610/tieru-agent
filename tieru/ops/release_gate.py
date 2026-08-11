@@ -26,6 +26,75 @@ load_dotenv()  # the key check below must see .env, same as the app does
 
 REPO = Path(__file__).resolve().parents[2]
 
+SHIPPED_WHEEL_FILES = {
+    "tieru/tieru.example.yaml",
+    "tieru/ops/static/index.html",
+    "tieru/ops/static/style.css",
+    "tieru/ops/static/js/main.js",
+    "tieru/ops/doctor.py",
+    "tieru/ops/init.py",
+    "tieru/trust/kernel.py",
+    "tieru/replay/service.py",
+    "tieru/forge/service.py",
+    "tieru/shadow/service.py",
+    "tieru/fabric/service.py",
+    "tieru/capsule/service.py",
+    "tieru/memory/graph/service.py",
+    "tieru/skills/community/meeting-prep/SKILL.md",
+    "tieru/skills/schedule-meeting/SKILL.md",
+    "tieru/skills/weekly-brief/SKILL.md",
+}
+
+SHIPPED_SDIST_FILES = {
+    "examples/README.md",
+    "examples/mcp.demo.json",
+    "examples/mcp_demo_server.py",
+    "examples/local-only/README.md",
+    "examples/local-only/config.yaml",
+    "examples/local-multi-model/README.md",
+    "examples/local-multi-model/config.yaml",
+    "examples/local-plus-cloud/README.md",
+    "examples/local-plus-cloud/config.yaml",
+    "examples/privacy-first/README.md",
+    "examples/privacy-first/config.yaml",
+    "examples/repository-agent/README.md",
+    "examples/repository-agent/config.yaml",
+    "tieru/tieru.example.yaml",
+    "tieru/ops/static/index.html",
+    "tieru/ops/doctor.py",
+    "tieru/ops/init.py",
+    "tieru/trust/kernel.py",
+    "tieru/replay/service.py",
+    "tieru/forge/service.py",
+    "tieru/shadow/service.py",
+    "tieru/fabric/service.py",
+    "tieru/capsule/service.py",
+    "tieru/memory/graph/service.py",
+    "skills/community/meeting-prep/SKILL.md",
+    "skills/schedule-meeting/SKILL.md",
+    "skills/weekly-brief/SKILL.md",
+}
+
+
+def _forbidden_artifact_path(name: str) -> bool:
+    path = Path(name.replace("\\", "/"))
+    parts = {part.lower() for part in path.parts}
+    basename = path.name.lower()
+    return (
+        bool(parts & {
+            ".tieru", ".waku", ".pytest_cache", ".ruff_cache", "__pycache__",
+            "dist", "outbox", "screenshots", "traces",
+        })
+        or basename in {
+            ".env", "state.db", "eval_report.json", "eval_runs.jsonl", "credentials.json",
+            "google-token.json",
+        }
+        or basename.endswith((
+            ".db", ".key", ".pem", ".pyc", ".pyo", ".sqlite", ".sqlite3", ".tmp",
+            ".tieru",
+        ))
+    )
+
 
 def run(suite: str) -> tuple[int, dict]:
     """Run a pytest suite; return (exit_code, {passed, failed}). Counts come
@@ -61,10 +130,16 @@ def inspect_artifacts(directory: str) -> bool:
         wheel_names = archive.namelist()
     with tarfile.open(sdist) as archive:
         sdist_names = archive.getnames()
-    required = {"tieru/ops/static/index.html", "tieru/tieru.example.yaml"}
+    sdist_root = sdist_names[0].split("/", 1)[0] if sdist_names else ""
+    required_sdist = {f"{sdist_root}/{name}" for name in SHIPPED_SDIST_FILES}
     forbidden = "template_Agent.md"
-    ok = required <= set(wheel_names) and not any(
-        name.endswith(forbidden) for name in [*wheel_names, *sdist_names]
+    all_names = [*wheel_names, *sdist_names]
+    ok = (
+        SHIPPED_WHEEL_FILES <= set(wheel_names)
+        and required_sdist <= set(sdist_names)
+        and not any(name.startswith("examples/") for name in wheel_names)
+        and not any(name.endswith(forbidden) for name in all_names)
+        and not any(_forbidden_artifact_path(name) for name in all_names)
     )
     print("artifact contents: PASSED" if ok else "artifact contents: FAILED")
     return ok
@@ -73,8 +148,8 @@ def inspect_artifacts(directory: str) -> bool:
 def release_checks() -> bool:
     """Lint, compile, build, and validate metadata after deterministic tests."""
     checks = [
-        command("ruff", [sys.executable, "-m", "ruff", "check", "tieru", "tieru", "evals", "scripts"]),
-        command("compileall", [sys.executable, "-m", "compileall", "-q", "tieru", "tieru"]),
+        command("ruff", [sys.executable, "-m", "ruff", "check", "tieru", "evals", "scripts"]),
+        command("compileall", [sys.executable, "-m", "compileall", "-q", "tieru"]),
     ]
     with tempfile.TemporaryDirectory(prefix="tieru-release-") as directory:
         checks.append(command(

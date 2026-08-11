@@ -1,0 +1,19 @@
+version: 1
+active_profile: example-privacy-first
+profiles:
+  example-privacy-first:
+    main:
+      provider: ollama
+      model: gemma4:e2b
+    small:
+      provider: ollama
+      model: gemma4:e2b
+    judge:
+      provider: ollama
+      model: gemma4:e2b
+fabric:
+  enabled: true
+  routing_policy: local_only
+memory_write_policy: explicit
+shadow_enabled: false
+browser_enabled: false

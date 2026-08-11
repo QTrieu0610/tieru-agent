@@ -135,10 +135,14 @@ function approvalModal(item){
     document.body.appendChild(modal);
   }
   activeApproval = item;
-  document.getElementById("approval-title").textContent = `Allow ${item.tool}?`;
+  document.getElementById("approval-title").textContent =
+    `Allow ${item.operation || "run"}: ${item.tool}?`;
   document.getElementById("approval-risk").textContent = `Risk: ${item.risk} · ${item.reason}`;
   document.getElementById("approval-caps").textContent = `Capabilities: ${(item.capabilities||[]).join(", ") || "none"}`;
-  document.getElementById("approval-args").textContent = JSON.stringify(item.args || {}, null, 2);
+  document.getElementById("approval-args").textContent = JSON.stringify({
+    target:item.target || "(tool-managed scope)", scope:item.scope || "",
+    arguments:item.args || {}
+  }, null, 2);
   modal.hidden = false;
 }
 async function resolveApproval(decision){

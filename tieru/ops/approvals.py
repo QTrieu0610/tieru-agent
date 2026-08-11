@@ -33,6 +33,10 @@ class _PendingApproval:
             "args": self.request.args,
             "argument_hash": self.request.argument_hash,
             "reason": self.request.reason,
+            "operation": self.request.operation,
+            "target": self.request.target,
+            "scope": self.request.scope,
+            "resource_type": self.request.resource_type,
             "expires_in": max(0, int(self.expires_at - time.monotonic())),
         }
 

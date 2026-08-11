@@ -104,4 +104,7 @@ def make_tool() -> Tool:
         read_only=True,
         capabilities=("network.read", "web.untrusted"),
         default_policy="allow",
+        operation="search",
+        fixed_target="public web",
+        resource_type="network",
     )

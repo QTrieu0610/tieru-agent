@@ -2,4 +2,4 @@ blank_issues_enabled: true
 contact_links:
   - name: Good first issues
     url: https://github.com/QTrieu0610/tieru-agent/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22
-    about: The live list. Comment before you start and it gets assigned to you.
+    about: Browse currently open issues labeled as suitable starting points.

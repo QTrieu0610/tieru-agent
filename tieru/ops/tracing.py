@@ -77,6 +77,7 @@ class Tracer:
         self._otel_tracer = self._init_otel(settings)
         self._span_ctx = None
         self._trace_encoding_checked = False
+        self._current_run_id = ""
 
     def _init_otel(self, settings: Settings):
         if not settings.otel_endpoint:
@@ -138,6 +139,8 @@ class Tracer:
             event = {"provider": self.settings.provider,
                      "model": self.settings.model or "", **event}
         event = _sanitize(event)
+        if self._current_run_id and "run_id" not in event:
+            event = {"run_id": self._current_run_id, **event}
         self._write({"type": kind, **event})
         if self._otel_tracer and self._span_ctx is not None:
             with self._otel_tracer.start_as_current_span(
@@ -151,23 +154,30 @@ class Tracer:
 
     # ---- one run = one root span + turn_start/turn_end JSONL markers
     @contextmanager
-    def turn(self, user_message: str):
-        self._write({"type": "turn_start", "user_message": user_message})
-        if self._otel_tracer:
-            with self._otel_tracer.start_as_current_span(
-                "agent_run",
-                attributes={"openinference.span.kind": "AGENT", "tieru.user_message": user_message},
-            ) as span:
-                self._span_ctx = span
-                try:
-                    yield self
-                finally:
-                    self._span_ctx = None
-        else:
-            yield self
+    def turn(self, user_message: str, *, run_id: str = "", session_id: str = "default",
+             source: str = "cli"):
+        self._current_run_id = run_id
+        self._write({"type": "turn_start", "run_id": run_id, "session_id": session_id,
+                     "source": source, "user_message": user_message})
+        try:
+            if self._otel_tracer:
+                with self._otel_tracer.start_as_current_span(
+                    "agent_run",
+                    attributes={"openinference.span.kind": "AGENT", "tieru.run_id": run_id},
+                ) as span:
+                    self._span_ctx = span
+                    try:
+                        yield self
+                    finally:
+                        self._span_ctx = None
+            else:
+                yield self
+        finally:
+            self._current_run_id = ""
 
-    def end_turn(self, reply: str, iterations: int) -> None:
-        self._write({"type": "turn_end", "reply": reply, "iterations": iterations})
+    def end_turn(self, reply: str, iterations: int, *, run_id: str = "") -> None:
+        self._write({"type": "turn_end", "run_id": run_id, "reply": reply,
+                     "iterations": iterations})
         if getattr(self, "_otel_provider", None):
             # flush per turn: the trace should survive even a killed process
             self._otel_provider.force_flush(timeout_millis=2000)

@@ -1,7 +1,7 @@
 # Stack report — verified 2026-07-10
 
 > **Historical upstream verification snapshot.** Versions, decisions, and test
-> results below describe the tieru-era environment on the stated date; they are
+> results below describe the Waku-era environment on the stated date; they are
 > not a current Tieru validation report.
 
 The brief (§7) asked for a research-then-verify pass before building. Result: every layer

@@ -5,9 +5,7 @@ Setup (2 minutes, free):
   2. Put TELEGRAM_BOT_TOKEN=... in .env
   3. Set TELEGRAM_ALLOWED_USER=<your numeric id> (message @userinfobot to get
      it) so ONLY you can talk to your Tieru. Comma-separate for several people.
-     LEAVING THIS UNSET MEANS ANYONE WHO FINDS YOUR BOT CAN USE IT — and this
-     bot answers out of YOUR memory, with YOUR tools, on YOUR API key. The
-     startup banner tells you which posture you are in; read it.
+     Leaving this unset keeps the gateway locked: every sender is denied.
   4. make telegram
 
 Long-polling: your laptop calls Telegram's API — no public URL, no webhook,
@@ -24,9 +22,13 @@ from tieru.gateway.cli import _observer  # mirror gate/tool activity on the lapt
 
 
 def _allowed_ids() -> set[str]:
-    """Parse TELEGRAM_ALLOWED_USER into a set. Empty means no restriction —
-    which is why `posture()` says so out loud on every start."""
+    """Parse TELEGRAM_ALLOWED_USER into a set. Empty always means deny."""
     return {p.strip() for p in os.getenv("TELEGRAM_ALLOWED_USER", "").split(",") if p.strip()}
+
+
+def sender_allowed(allowed_ids: set[str], sender_id: str) -> bool:
+    """Fail-closed sender policy shared by polling and deterministic tests."""
+    return bool(allowed_ids) and str(sender_id) in allowed_ids
 
 
 def posture() -> str:
@@ -35,8 +37,8 @@ def posture() -> str:
     ids = _allowed_ids()
     if ids:
         return f"  reachable by: {len(ids)} allowlisted user(s)"
-    return ("  reachable by: ANYONE who finds this bot — it will answer from your\n"
-            "                personal memory. Set TELEGRAM_ALLOWED_USER to lock it.")
+    return ("  LOCKED: TELEGRAM_ALLOWED_USER is empty; all inbound messages are denied.\n"
+            "          Set an explicit numeric user id before starting the gateway.")
 
 
 def _build_app(token: str, allowed: str = ""):
@@ -54,7 +56,7 @@ def _build_app(token: str, allowed: str = ""):
     tieru.session.session_id = "telegram"   # its own conversation thread in the inbox
 
     async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        if allowed_ids and str(update.effective_user.id) not in allowed_ids:
+        if not sender_allowed(allowed_ids, str(update.effective_user.id)):
             await update.message.reply_text("This Tieru serves someone else. Run your own!")
             return
         print(f"you › {update.message.text}")
@@ -78,6 +80,10 @@ def main() -> None:
     token = load_settings().telegram_token
     if not token:
         raise SystemExit("Set TELEGRAM_BOT_TOKEN in .env (message @BotFather to create a bot).")
+    if not _allowed_ids():
+        raise SystemExit(
+            "Telegram gateway locked: set TELEGRAM_ALLOWED_USER to your numeric user id."
+        )
     app = _build_app(token)
     print("Tieru is listening on Telegram — message your bot. Ctrl-C to stop.")
     print(posture())
@@ -93,6 +99,9 @@ def start_in_background() -> bool:
 
     token = load_settings().telegram_token
     if not token:
+        return False
+    if not _allowed_ids():
+        print("(telegram) gateway locked: TELEGRAM_ALLOWED_USER is empty; not starting")
         return False
     try:
         import telegram  # noqa: F401

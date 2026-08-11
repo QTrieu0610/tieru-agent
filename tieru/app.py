@@ -8,11 +8,17 @@ from __future__ import annotations
 
 from tieru.config import Settings, load_settings
 from tieru.db import connect
+from tieru.fabric import ModelFabric, ModelSelectionError
+from tieru.fabric.availability import AvailabilityService
+from tieru.fabric.fallback import fallback_reason
+from tieru.fabric.verify import verify_result
 from tieru.loop.agent import LoopResult, Observer, run_loop
 from tieru.loop.models import ModelRouter
 from tieru.ops.tracing import Tracer, compose
+from tieru.replay import ReplayRecorder, ReplayService, new_run_id
 from tieru.runtime.session import Session
 from tieru.tools import build_registry
+from tieru.tools.registry import ToolRegistry
 
 
 class Tieru:
@@ -24,19 +30,59 @@ class Tieru:
         self.settings.ensure_home()
         self.conn = conn or connect(self.settings.home)
         self.model_router = ModelRouter(self.settings, shared_client=client)
-        self.client = self.model_router.client("main")
-        self.small_client = self.model_router.client("small")
+        self.replay = ReplayService(self.conn, self.settings)
+        self.fabric = ModelFabric(
+            self.settings, self.model_router, replay=self.replay,
+            availability=(AvailabilityService(
+                self.settings, probe=lambda _candidate: True,
+                credential_override=True,
+            ) if client is not None else None),
+        )
+        bootstrap = None
+        if self.settings.fabric_enabled and self.settings.fabric_models:
+            candidates = sorted(
+                self.fabric.registry.all(),
+                key=lambda candidate: (not candidate.local, candidate.candidate_id),
+            )
+            for candidate in candidates:
+                if not candidate.enabled or candidate.capabilities.get("text") is not True:
+                    continue
+                try:
+                    self.model_router.client_for(candidate, "small")
+                except (Exception, SystemExit):  # unavailable optional target
+                    candidate_ready = False
+                else:
+                    candidate_ready = True
+                if candidate_ready:
+                    bootstrap = candidate
+                    break
+        if bootstrap is not None:
+            self.client = self.model_router.client_for(bootstrap, "main")
+            self.small_client = self.model_router.client_for(bootstrap, "small")
+        else:
+            self.client = self.model_router.client("main")
+            self.small_client = self.model_router.client("small")
 
         # Memory first: the memory-management tools need it.
         from tieru.memory import Memory
 
         self.memory = Memory(self.conn, self.settings, self.small_client)
+        if bootstrap is not None:
+            self.memory.set_model(
+                self.small_client, bootstrap.model, bootstrap.provider
+            )
         self.tools = build_registry(
             self.conn, self.settings, self.memory, approval_handler=approval_handler
         )
+        # QUICK receives no schemas. This separate empty view leaves the shared
+        # registry and its Trust boundary untouched for every other mode.
+        self.no_tools = ToolRegistry(trust_policy=self.settings.trust_policy)
         self.mcp_bridge = getattr(self.tools, "mcp_bridge", None)
         self.session = Session(self.settings, memory=self.memory)
         self.tracer = Tracer(self.settings)
+        from tieru.shadow import ShadowService
+
+        self.shadow = ShadowService(self.conn, self.settings)
 
     def close(self) -> None:
         """Release external resources (MCP subprocesses). Called when the
@@ -58,6 +104,18 @@ class Tieru:
         # them with the turn (the reopened-thread telemetry the dashboard shows)
         import time
         captured: dict = {}
+        run_id = new_run_id()
+        recorder = ReplayRecorder(self.replay)
+        main_role = self.model_router.role("main")
+        recorder.start(
+            run_id=run_id,
+            session_id=self.session.session_id,
+            source=source,
+            role="main",
+            model=main_role.model,
+            provider=main_role.provider,
+            user_input=user_message,
+        )
 
         def _capture(kind, ev):
             if kind == "gate":
@@ -68,58 +126,192 @@ class Tieru:
                 captured["triage_reason"] = ev.get("reason")
             if kind == "graph_end":
                 captured["graph_path"] = ev.get("path")
-        notify = compose(observer, self.tracer.event, _capture)
+            if kind in {
+                "tool_requested", "tool_started", "tool_completed", "tool_failed",
+                "tool_denied", "tool",
+            }:
+                captured["tool_activity"] = int(captured.get("tool_activity", 0)) + 1
+        fanout = compose(observer, self.tracer.event, recorder.event, _capture)
+
+        def notify(kind, event):
+            fanout(kind, {**event, "run_id": run_id})
+
+        decision = self.fabric.fallback("fabric_disabled")
         t0 = time.perf_counter()
+        try:
+            with self.tracer.turn(
+                user_message,
+                run_id=run_id,
+                session_id=self.session.session_id,
+                source=source,
+            ):
+                if self.settings.fabric_enabled:
+                    try:
+                        decision = self.fabric.route(user_message)
+                    except ModelSelectionError:
+                        # Policy/capability/availability exclusion is an honest
+                        # stop. Falling through to the role target could bypass
+                        # local_only or another hard rule.
+                        raise
+                    except Exception as exc:  # noqa: BLE001 - M11 compatibility fallback
+                        if self.settings.fabric_routing_policy == "local_only":
+                            raise
+                        decision = self.fabric.fallback(
+                            f"fabric_{type(exc).__name__}"
+                        )
+                    task = decision.task_profile
+                    notify("fabric_analysis", {
+                        "task_type": task.task_type,
+                        "complexity": task.complexity,
+                        "requires_tools": task.requires_tools,
+                        "requires_memory": task.requires_memory,
+                        "requires_deep_context": task.requires_deep_context,
+                        "requires_verification": task.requires_verification,
+                        "signals": list(task.signals),
+                    })
+                    notify("fabric_route", {
+                        "task_type": task.task_type,
+                        "complexity": task.complexity,
+                        "execution_mode": decision.mode.value,
+                        "role": decision.role,
+                        "model": decision.model,
+                        "provider": decision.provider,
+                        "reason_codes": list(decision.reason_codes),
+                        "classifier_source": decision.classifier_source,
+                        "fallback_used": decision.fallback_used,
+                        "max_tokens": decision.profile.max_tokens,
+                        "max_iterations": decision.profile.max_iterations,
+                        "history_turns": decision.profile.history_turns,
+                        "tools_enabled": decision.profile.tools_enabled,
+                        "memory_enabled": decision.profile.memory_enabled,
+                        "verification_enabled": decision.profile.verification_enabled,
+                    })
+                    self._notify_selection(decision, notify)
+                    if decision.fallback_used:
+                        notify("fabric_fallback", {
+                            "execution_mode": decision.mode.value,
+                            "reason_codes": list(decision.reason_codes),
+                        })
+                # The graph front door is optional and can NEVER make Tieru worse:
+                # flag off → this is exactly the old code path; flag on → the triage
+                # graph decides quick vs full, and any failure anywhere falls open
+                # to the plain loop below (same fail-open rule as the retrieval gate).
+                result = None
+                if self.settings.fabric_enabled:
+                    decision, result = self._run_profiled_with_fallback(
+                        user_message, decision, notify, stream
+                    )
+                elif self.settings.graph_workflows:
+                    try:
+                        result = self._respond_via_graph(user_message, notify, stream)
+                    except Exception as exc:
+                        notify("graph_end", {"workflow": "triage", "ms": 0, "steps": 0,
+                                             "path": [], "error": repr(exc)})
+                        result = None
+                if result is None:
+                    result = self._run_full_turn(user_message, notify, stream)
 
-        with self.tracer.turn(user_message):
-            # The graph front door is optional and can NEVER make Tieru worse:
-            # flag off → this is exactly the old code path; flag on → the triage
-            # graph decides quick vs full, and any failure anywhere falls open
-            # to the plain loop below (same fail-open rule as the retrieval gate).
-            result = None
-            if self.settings.graph_workflows:
+                quick = captured.get("graph_route", {}).get("target") == "quick_reply"
+
+                def _status(out: str) -> str:
+                    low = (out or "").lower()
+                    if "tool_permission_denied" in low:
+                        return "denied"
+                    return "error" if ("failed" in low or "timed out" in low
+                                       or low.startswith("error")) else "ok"
+
+                role = decision.role if self.settings.fabric_enabled else (
+                    "small" if quick else "main"
+                )
+                verification = (
+                    verify_result(
+                        self.model_router, decision, user_message, result.reply, notify,
+                        candidate=self._candidate_for(decision),
+                    )
+                    if self.settings.fabric_enabled
+                    else {"status": "skipped"}
+                )
+                latency_ms = int((time.perf_counter() - t0) * 1000)
+                meta = {
+                    "run_id": run_id,
+                    "gate": captured.get("gate"),
+                    "graph": ({"workflow": "triage",
+                               "route": "quick" if quick else "full",
+                               "reason": captured.get("triage_reason", ""),
+                               "path": captured.get("graph_path")}
+                              if "graph_route" in captured else None),
+                    "fabric": decision.public() if self.settings.fabric_enabled else None,
+                    "fabric_verification": verification,
+                    "iterations": result.iterations,
+                    "latency_ms": latency_ms,
+                    "tools": [{"tool": c["tool"], "status": _status(c["output"])}
+                              for c in result.tool_calls],
+                    "model": (
+                        decision.model if self.settings.fabric_enabled
+                        else self.model_router.model(role)
+                    ),
+                    "provider": (
+                        decision.provider if self.settings.fabric_enabled
+                        else self.model_router.provider(role)
+                    ),
+                }
+                result.run_id = run_id
+                self.session.add_exchange(user_message, result.reply, tool_calls=result.tool_calls,
+                                          source=source, meta=meta)
+                if (self.memory is not None
+                        and (not self.settings.fabric_enabled
+                             or decision.profile.memory_enabled)):
+                    self.memory.maybe_consolidate(notify=notify)
+                    self.memory.export_markdown()   # keep MEMORY.md in sync
+                notify("final_output", {"output": result.reply, "reference": "chat_log"})
+
+            self.tracer.end_turn(result.reply, result.iterations, run_id=run_id)
+            recorder.complete(
+                output=result.reply,
+                iterations=result.iterations,
+                latency_ms=latency_ms,
+                role=role,
+                model=meta["model"],
+                provider=meta["provider"],
+            )
+            if recorder.degraded:
+                self.tracer.event(
+                    "replay_degraded", {"run_id": run_id, "errors": recorder.errors[:5]}
+                )
+            else:
+                # Advisory post-processing only. A Shadow failure can never
+                # change the completed Replay, response, Memory, tools, or Trust.
                 try:
-                    result = self._respond_via_graph(user_message, notify, stream)
-                except Exception as exc:
-                    notify("graph_end", {"workflow": "triage", "ms": 0, "steps": 0,
-                                         "path": [], "error": repr(exc)})
-                    result = None
-            if result is None:
-                result = self._run_full_turn(user_message, notify, stream)
-
-            quick = captured.get("graph_route", {}).get("target") == "quick_reply"
-
-            def _status(out: str) -> str:
-                low = (out or "").lower()
-                if "tool_permission_denied" in low:
-                    return "denied"
-                return "error" if ("failed" in low or "timed out" in low
-                                   or low.startswith("error")) else "ok"
-            meta = {
-                "gate": captured.get("gate"),
-                "graph": ({"workflow": "triage",
-                           "route": "quick" if quick else "full",
-                           "reason": captured.get("triage_reason", ""),
-                           "path": captured.get("graph_path")}
-                          if "graph_route" in captured else None),
-                "iterations": result.iterations,
-                "latency_ms": int((time.perf_counter() - t0) * 1000),
-                "tools": [{"tool": c["tool"], "status": _status(c["output"])}
-                          for c in result.tool_calls],
-                # which brain answered this turn — so a reopened thread (or a
-                # thread you switched models mid-way) shows it per card. A quick
-                # graph turn was answered by the small model; say so honestly.
-                "model": self.model_router.model("small" if quick else "main"),
-                "provider": self.model_router.provider("small" if quick else "main"),
-            }
-            self.session.add_exchange(user_message, result.reply, tool_calls=result.tool_calls,
-                                      source=source, meta=meta)
-            if self.memory is not None:
-                self.memory.maybe_consolidate(notify=notify)
-                self.memory.export_markdown()   # keep MEMORY.md in sync
-
-        self.tracer.end_turn(result.reply, result.iterations)
-        return result
+                    self.shadow.observer = lambda kind, event: self.tracer.event(
+                        kind, {**event, "run_id": run_id}
+                    )
+                    self.shadow.observe(run_id)
+                except Exception as exc:  # noqa: BLE001 - strict failure isolation
+                    self.tracer.event(
+                        "shadow_processing_error",
+                        {"run_id": run_id, "error_code": type(exc).__name__},
+                    )
+            return result
+        except Exception as exc:
+            latency_ms = int((time.perf_counter() - t0) * 1000)
+            error_code = type(exc).__name__
+            self.tracer.event(
+                "run_failed",
+                {"run_id": run_id, "error_code": error_code,
+                 "error_summary": str(exc)[:500]},
+            )
+            failed_role = decision.role if self.settings.fabric_enabled else "main"
+            recorder.fail(
+                error_code=error_code,
+                error_summary=str(exc),
+                latency_ms=latency_ms,
+                role=failed_role,
+                model=(decision.model if self.settings.fabric_enabled
+                       else self.model_router.model(failed_role)),
+                provider=(decision.provider if self.settings.fabric_enabled
+                          else self.model_router.provider(failed_role)),
+            )
+            raise
 
     def _run_full_turn(self, user_message: str, notify, stream: bool) -> LoopResult:
         """The classic turn: assemble working memory, run THE loop. Extracted
@@ -143,7 +335,137 @@ class Tieru:
             max_tokens=self.settings.max_tokens,
             observer=notify,
             stream=stream,
+            provider=self.model_router.provider("main"),
+            role="main",
         )
+
+    def _run_profiled_turn(self, user_message, decision, notify, stream) -> LoopResult:
+        """Run the unchanged loop once with an immutable Fabric profile."""
+        profile = decision.profile
+        candidate = self._candidate_for(decision)
+        selected_client = self.model_router.client_for(candidate, decision.role)
+        if self.memory is not None:
+            self.memory.set_model(selected_client, decision.model, decision.provider)
+        system = self.session.build_system(
+            user_message, notify=notify, memory_enabled=profile.memory_enabled,
+            role_model=decision.model, role_provider=decision.provider,
+        )
+        window = profile.history_turns * 2
+        messages = self.session.history[-window:] + [
+            {"role": "user", "content": user_message}
+        ]
+        return run_loop(
+            client=selected_client,
+            model=decision.model,
+            system=system,
+            messages=messages,
+            tools=self.tools if profile.tools_enabled else self.no_tools,
+            max_iterations=profile.max_iterations,
+            max_tokens=profile.max_tokens,
+            observer=notify,
+            stream=stream,
+            provider=decision.provider,
+            role=decision.role,
+        )
+
+    def _candidate_for(self, decision):
+        selection = decision.model_selection
+        return self.fabric.candidate(selection.candidate_id) if selection else None
+
+    @staticmethod
+    def _notify_selection(decision, notify) -> None:
+        selection = decision.model_selection
+        if selection is None:
+            return
+        notify("fabric_candidates", {
+            "task_type": decision.task_profile.task_type,
+            "execution_mode": decision.mode.value,
+            "candidates": [
+                {
+                    "candidate_id": item.candidate_id,
+                    "provider": item.provider,
+                    "model": item.model,
+                    "eligible": item.eligible,
+                }
+                for item in selection.candidates
+            ],
+        })
+        for item in selection.candidates:
+            if not item.eligible:
+                notify("fabric_filter", {
+                    "candidate_id": item.candidate_id,
+                    "provider": item.provider,
+                    "model": item.model,
+                    "exclusion_reasons": list(item.exclusion_reasons),
+                })
+            elif item.total_score is not None:
+                notify("fabric_score", {
+                    "candidate_id": item.candidate_id,
+                    "provider": item.provider,
+                    "model": item.model,
+                    "total_score": item.total_score,
+                    "score_breakdown": item.score_breakdown,
+                })
+        notify("fabric_selection", {
+            "task_type": decision.task_profile.task_type,
+            "execution_mode": decision.mode.value,
+            "candidate_id": selection.candidate_id,
+            "initial_candidate_id": selection.initial_candidate_id,
+            "provider": selection.provider,
+            "model": selection.model,
+            "total_score": selection.total_score,
+            "score_breakdown": selection.score_breakdown,
+            "fallback_count": selection.fallback_count,
+            "fallback_used": selection.fallback_count > 0,
+        })
+
+    def _run_profiled_with_fallback(self, user_message, decision, notify, stream):
+        while True:
+            tool_activity = {"count": 0}
+
+            def watched(kind, event, activity=tool_activity):
+                if kind in {
+                    "tool_requested", "tool_started", "tool_completed", "tool_failed",
+                    "tool_denied", "tool",
+                }:
+                    activity["count"] += 1
+                notify(kind, event)
+
+            try:
+                return decision, self._run_profiled_turn(
+                    user_message, decision, watched, stream
+                )
+            except Exception as exc:
+                reason = fallback_reason(exc)
+                safe_to_restart = not stream and tool_activity["count"] == 0
+                if not reason or not safe_to_restart:
+                    if reason and not safe_to_restart:
+                        notify("fabric_fallback", {
+                            "from_candidate": (
+                                decision.model_selection.candidate_id
+                                if decision.model_selection else ""
+                            ),
+                            "reason": reason,
+                            "status": "blocked_after_tool_activity_or_stream",
+                            "fallback_count": (
+                                decision.model_selection.fallback_count
+                                if decision.model_selection else 0
+                            ),
+                        })
+                    raise
+                previous = decision
+                try:
+                    decision = self.fabric.fallback_decision(decision, reason)
+                except Exception:
+                    raise exc
+                notify("fabric_fallback", {
+                    "from_candidate": previous.model_selection.candidate_id,
+                    "to_candidate": decision.model_selection.candidate_id,
+                    "reason": reason,
+                    "status": "retrying",
+                    "fallback_count": decision.model_selection.fallback_count,
+                })
+                self._notify_selection(decision, notify)
 
     def _respond_via_graph(self, user_message: str, notify, stream: bool) -> LoopResult | None:
         """One turn through the triage graph workflow. Returns None whenever
@@ -158,17 +480,50 @@ class Tieru:
         )
 
         def quick_reply(state: dict) -> str:
+            import time
+
             prompt = QUICK_REPLY_PROMPT.format(calendar=state.get("calendar", ""),
                                                message=state["message"])
+            started = time.perf_counter()
+            notify("model_call_started", {"role": "small",
+                                          "model": self.model_router.model("small"),
+                                          "provider": self.model_router.provider("small"),
+                                          "purpose": "quick_reply"})
             response = self.small_client.messages.create(
                 model=self.model_router.model("small"), max_tokens=600,
                 messages=[{"role": "user", "content": prompt}])
+            usage = getattr(response, "usage", None)
+            notify("model_call_completed", {"iteration": 1, "role": "small",
+                                            "model": self.model_router.model("small"),
+                                            "provider": self.model_router.provider("small"),
+                                            "purpose": "quick_reply",
+                                            "stop_reason": getattr(response, "stop_reason", ""),
+                                            "usage": {"in": getattr(usage, "input_tokens", 0),
+                                                      "out": getattr(usage, "output_tokens", 0)},
+                                            "duration_ms": int((time.perf_counter() - started) * 1000)})
             return "".join(b.text for b in response.content if b.type == "text")
 
+        def classify_with_events(message: str):
+            import time
+
+            started = time.perf_counter()
+            notify("model_call_started", {"role": "small",
+                                          "model": self.model_router.model("small"),
+                                          "provider": self.model_router.provider("small"),
+                                          "purpose": "graph_triage"})
+            decision = classify_message(
+                self.small_client, self.model_router.model("small"), message
+            )
+            notify("model_call_completed", {"role": "small",
+                                            "model": self.model_router.model("small"),
+                                            "provider": self.model_router.provider("small"),
+                                            "purpose": "graph_triage",
+                                            "duration_ms": int((time.perf_counter() - started) * 1000),
+                                            "stop_reason": "decision"})
+            return decision
+
         graph = build_triage_graph(
-            classify_fn=lambda m: classify_message(
-                self.small_client, self.model_router.model("small"), m
-            ),
+            classify_fn=classify_with_events,
             calendar_fn=lambda: todays_events(self.settings.home),
             quick_fn=quick_reply,
             # the full path is the SAME method the flag-off default runs; the

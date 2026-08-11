@@ -1,9 +1,10 @@
 # Tieru implementation plan
 
-Tieru is the public and canonical technical product contract. M1 branding and M2 core are complete:
+Tieru is the public and canonical technical product contract. M1–M4 established
+the shipped runtime foundation; M5 establishes the independent product identity:
 the distribution is `tieru-agent`, the Python namespace and CLI are `tieru`, configuration uses
-`TIERU_*` and YAML profiles, and new runtime state defaults to `.tieru`. Deprecated `tieru`,
-`WAKU_*`, and `.tieru` compatibility remains explicit and warning-backed; data is never silently
+`TIERU_*` and YAML profiles, and new runtime state defaults to `.tieru`. Deprecated Waku
+identifiers, `WAKU_*`, and `.waku` compatibility remain explicit and warning-backed; data is never silently
 moved or merged.
 
 The M2 deterministic result on Windows is 429 passed, 16 skipped, and 5 failed. The five failures
@@ -23,9 +24,9 @@ provenance note where needed. `docs/TIERU_SPEC.md`, this plan, and `AGENTS.md`
 define the product and contributor contract.
 
 **Files and modules not changed by this milestone.** Package/import paths,
-entry points, `WAKU_*`, `.tieru`, trace/schema/storage identifiers, dependencies,
+entry points, `WAKU_*`, `.waku`, trace/schema/storage identifiers, dependencies,
 binary or licensed assets, whiteboard source files, `LICENSE`, and implementation
-behavior. Historical tieru names and results remain tieru.
+behavior. Historical Waku names and results remain Waku.
 
 **Dependencies.** M0 source audit and the existing deterministic, packaging,
 static-asset, and lint checks. No new dependency.
@@ -59,9 +60,10 @@ unrelated local file `template_Agent.md`.
 
 **Goal.** Ship the `tieru-agent` distribution, canonical `tieru` namespace and CLI, typed YAML
 configuration, independent `main`/`small`/`judge` routing, protocol adapters, local Ollama, and a
-safe compatibility path from tieru.
+safe compatibility path from Waku.
 
-**Files changed.** `pyproject.toml`; canonical runtime under `tieru/`; the small `tieru/` shim;
+**Files changed.** `pyproject.toml`; canonical runtime under `tieru/`; compatibility
+configuration and migration paths;
 CLI, config, model adapter/router, provider, dashboard settings, catalog, judge, scripts, environment
 example, `tieru.example.yaml`, README/contributor docs, and focused deterministic tests.
 
@@ -207,3 +209,181 @@ passed, including an authenticated mutation and the approval modal. Ollama
 vulnerabilities after upgrading the clean venv's bootstrap pip to 26.2, while
 the unpublished local `tieru-agent` distribution itself was explicitly skipped.
 This is local evidence only: the new cloud CI matrix has not been observed.
+
+## M5 — Tieru Identity: completed on 2026-08-10
+
+**Goal.** Position Tieru as a local-first personal AI runtime with the product
+idea “One memory. Any model. Your rules.” Establish consistent names for the
+shipped runtime while separating current foundations from planned products.
+
+**Scope.** Rework the README, current architecture and specification, package
+and CLI metadata, dashboard introduction, runtime self-description, example
+comments, product identity, and roadmap. Preserve upstream attribution,
+copyright, history, compatibility settings, migrations, and historical source
+artifacts.
+
+**Non-goals.** No Memory Graph, Trust Kernel, Replay, Skill Forge, Shadow Mode,
+Model Fabric, or Capsule implementation; no core-loop redesign; no unnecessary
+runtime behavior changes.
+
+**Acceptance.** Current capabilities are source-backed; every future name is
+marked planned; Gemma 4 E2B is a verified local backend rather than the brand;
+public Waku/OpenClaw/Hermes comparisons are removed or given provenance context;
+tests and the release gate are reported honestly.
+
+## M6 — Tieru Memory Graph: completed on 2026-08-10
+
+**Goal.** Add a typed relationship layer to Tieru Memory without replacing its
+semantic, episodic, or procedural capabilities. Keep the entire graph usable
+offline with SQLite as the sole authoritative store.
+
+**Scope.** Add typed entity and relation records, provenance, bounded confidence
+and importance, temporal validity, lifecycle states, deterministic configured
+supersession, repository/service boundaries, explicit permission-gated memory
+operations, bounded model-free retrieval, `MEMORY.md` export, dashboard tables,
+additive schema creation, deterministic tests, and user documentation.
+
+**Migration posture.** Existing `state.db` files open unchanged through
+idempotent `CREATE TABLE/INDEX IF NOT EXISTS` statements. Existing facts,
+episodes, skills, chat history, FTS indexes, optional stores, and compatibility
+paths remain independent. M6 performs no graph backfill and no automatic
+conversation extraction.
+
+**Non-goals.** No external graph database, mandatory vector infrastructure,
+unrestricted graph reasoning, autonomous extraction, Trust Kernel, Replay,
+Skill Forge, Shadow Mode, Model Fabric, Capsule, or multi-agent memory.
+
+**Acceptance.** Typed entities and relations persist locally; relation
+provenance, scores, time bounds, contradiction/archive states, and supersession
+are inspectable; single- and multi-value predicates behave differently by
+explicit policy; retrieval is bounded and model-free; writes reuse the memory
+permission boundary; secrets are rejected; export/dashboard inspection works;
+legacy SQLite and existing memory behavior remain compatible; deterministic
+tests, lint, diff checks, and release gate are reported honestly.
+
+## M7 — Tieru Trust Kernel: completed on 2026-08-10
+
+**Goal.** Make the model an action requester rather than the execution authority
+by turning Tieru's proven permission controls into one coherent, structured,
+explainable authorization subsystem.
+
+**Scope.** Add `ActionRequest`, `TrustDecision`, canonical capabilities,
+deterministic four-level risk, secret-safe fingerprints, scoped policy with
+deny-first precedence, exact allow-once approval, repeated-denial suppression,
+fail-closed error handling, safe Trust events, legacy policy normalization,
+MCP local classification, pre-Playwright domain authorization, target metadata,
+CLI/dashboard inspection, deterministic tests, and documentation.
+
+**Compatibility.** `Tool`, `PermissionRequest`, `ToolRegistry`, legacy
+`tool_permissions`, action-specific memory policy, CLI and dashboard approval
+handlers, browser sandboxing, process allowlists, and the loop's denial guard
+remain supported. Existing denies retain priority. M5/M6 state and behavior are
+not rewritten.
+
+**Non-goals.** No OS sandbox, shell parser, antivirus, model-based risk analysis,
+permanent silent trust learning, Replay, Skill Forge, Shadow Mode, Model Fabric,
+Capsule, or cloud identity service.
+
+**Acceptance.** All registered model tools authorize at the common boundary;
+unclassified and failing actions deny without execution; scopes and approvals
+are deterministic and secret-safe; MCP, browser, filesystem/process, and memory
+actions follow Trust; policy and recent safe decisions are inspectable; old
+configuration maps safely; full tests, release gate, lint, packaging, and diff
+checks are reported honestly.
+
+## M8 — Tieru Replay: completed on 2026-08-10
+
+**Goal.** Make every important Tieru action inspectable after a run without
+recording hidden model reasoning or enabling side-effect re-execution.
+
+**Scope.** Add stable per-turn run IDs; additive `replay_runs` and
+`replay_events` tables; monotonic event sequences; central normalization over
+existing loop, memory, graph, Trust, tool, error, and output events; actual
+role/provider/model metadata; bounded/redacted previews; deterministic
+summaries; retention; failure isolation; and read-only CLI/dashboard timelines.
+
+**Compatibility.** Existing JSONL/OTel tracing, sessions, Memory Graph, Trust
+Kernel, tool APIs, model roles, and old SQLite databases remain valid. Replay
+cleanup affects telemetry only and never conversation or memory state.
+
+**Non-goals.** No private chain-of-thought, historical trace reconstruction,
+execution fork/resume/retry, side-effect replay, cloud telemetry, Skill Forge,
+Shadow Mode, Model Fabric, or Capsule.
+
+**Acceptance.** Runs/events persist locally with stable IDs and deterministic
+ordering; current observer events normalize centrally; model, Memory, Trust,
+tool, output, and failure metadata are safely inspectable; secrets and large
+content are bounded; JSONL remains functional; CLI/dashboard work read-only;
+retention and recorder failures cannot delete Memory or weaken Trust; tests,
+lint, packaging, release gate, and diff checks are reported honestly.
+
+## M9 — Tieru Skill Forge: completed on 2026-08-10
+
+Explicitly selected, successful Replay runs now pass through deterministic
+workflow extraction and conservative input generalization before optional
+current-model synthesis. Offline template drafting, local inactive draft
+storage, provenance and stable signatures, deterministic safety validation,
+side-effect-free consistency evaluation, honest optional-judge reporting,
+human review, collision-safe versioned installation, and M7 Trust authorization
+are shipped through the CLI and no-build dashboard. Existing `SKILL.md`
+procedural loading remains the only runtime consumer.
+
+**Non-goals.** M9 does not monitor activity, detect repetition, auto-create or
+auto-install skills, replay historical side effects, replace installed skills,
+modify Trust policy, or implement Shadow, Model Fabric, or Capsule.
+
+## M10 — Tieru Shadow: completed on 2026-08-10
+
+Completed successful Replay runs now flow through M9's exact workflow extractor
+and signature into local, bounded, idempotent pattern aggregation. Deterministic
+thresholds and confidence create explainable suggestions only after repetition;
+ignore, snooze, dismiss, active-draft, and installed-skill checks suppress nags.
+The CLI and no-build dashboard expose inspection, controls, and an explicit
+handoff to the existing Forge lifecycle, which creates an inactive draft only.
+
+**Non-goals.** M10 does not call models for detection, execute or replay tools,
+monitor activity outside Replay, alter Memory or Trust, install skills, add a
+background worker, perform semantic clustering, or implement Model Fabric or
+Capsule.
+
+## M11 — Tieru Model Fabric v1: completed on 2026-08-10
+
+A deterministic-first task analyzer, structured task/route/profile records, and
+policy-controlled QUICK/STANDARD/AGENT/DEEP modes now sit above the existing
+role-based `ModelRouter`. Per-turn profiles control finite budgets, bounded
+history, memory participation, tool-schema exposure, and optional DEEP
+verification without changing provider configuration or Trust authority.
+Replay, CLI, and the no-build dashboard expose safe route explanations and
+local descriptive metrics. Fabric is opt-in for upgrade compatibility.
+
+**Non-goals.** M11 does not adaptively select models/providers, benchmark cloud
+backends, learn from historical metrics, switch models during a turn, grant
+permissions, introduce autonomous agents, or implement Capsule.
+
+## M12 — Tieru Model Fabric v2: completed on 2026-08-11
+
+M12 preserves M11 execution modes, then discovers configuration-driven local
+and optional cloud candidates. Lazy cached availability and hard privacy,
+policy, role, capability, and context filters precede normalized deterministic
+scoring. A structured `ModelSelection` explains every exclusion and score.
+Replay-backed success/latency/tool aggregates remain neutral below a configured
+minimum. The selected target is sticky; bounded fallback is limited to hard
+infrastructure failures before tool activity and re-applies every hard filter.
+`ModelRouter` remains client authority and Trust remains action authority.
+
+**Non-goals.** M12 does not download models, scrape prices, auto-enable or buy
+cloud access, switch for subjective answer quality, train a router, fine-tune a
+model, modify Trust, or implement Capsule.
+
+## M13 — Tieru Capsule: completed on 2026-08-11
+
+M13 ships `tieru/capsule/`: a ZIP-compatible `tieru-capsule/1` snapshot with
+manifest hashes, bounded input validation, portable and full-history scopes,
+structural secret exclusion, structured Memory/Graph records, user skill
+validation, pending-review Trust, non-secret Fabric merge, an `ImportPlan`,
+transactional additive execution, local backup/audit, CLI, and dashboard.
+
+**Non-goals.** No cloud sync, account, live link, marketplace, credential
+portability, custom cryptography, automatic upload, or Trust bypass.
+
+The concise public roadmap lives in `docs/ROADMAP.md`.

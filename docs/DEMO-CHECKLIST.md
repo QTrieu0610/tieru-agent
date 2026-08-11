@@ -1,6 +1,6 @@
 # Demo / filming checklist
 
-> **Historical upstream filming material.** This checklist preserves the tieru
+> **Historical upstream filming material.** This checklist preserves the Waku
 > demo commands and verified beats as recorded; it is not a current Tieru test
 > report.
 
@@ -20,10 +20,10 @@ proves, where to look, and whether it's been dry-run verified. Keep this updated
 |---|---|---|---|---|
 | 1 | Cockpit tour (Harness) | — (click around) | Overview: stats, gate bar, clickable diagram | [x] |
 | 2 | Gateways (Harness) | chat from `make run` **and** the browser | Gateway tab tags each `cli` / `dashboard` | [x] |
-| 3 | The Loop + streaming | *"Schedule a tennis game with Raj this Saturday at 8am"* | reply streams; LOOP box pulses; Loop tab `iter 2` | [x] |
+| 3 | The Loop + streaming | *"Schedule a tennis game with Alex this Saturday at 8am"* | reply streams; LOOP box pulses; Loop tab `iter 2` | [x] |
 | 4 | Calendar read | *"What's on my calendar today?"* | `list_events` fires; answers from `state.db` | [x] |
-| 5 | Retrieval gate (Memory) | *"When am I swimming with Sergey?"* then *"what's 12 × 8?"* | gate retrieve vs skip; Overview bar; Ops decisions | [x] |
-| 6 | Memory self-management | *"Remember Raj prefers morning tennis"* | `save_note`; Memory ▸ Semantic + `MEMORY.md` update | [x] |
+| 5 | Retrieval gate (Memory) | *"When am I swimming with Morgan?"* then *"what's 12 × 8?"* | gate retrieve vs skip; Overview bar; Ops decisions | [x] |
+| 6 | Memory self-management | *"Remember Alex prefers morning tennis"* | `save_note`; Memory ▸ Semantic + `MEMORY.md` update | [x] |
 | 7 | **Multi-tool loop (money shot)** | *"Search the World Cup games still left and add each to my calendar"* | Loop tab `iter 8`: `search_web` × N → `create_event` × N | [x] |
 | 8 | Consolidation (Memory) | keep chatting past N exchanges | Memory ▸ Consolidation; a new episode + distilled facts | [x] |
 | 9 | Telegram gateway | message the bot from your phone | Gateway tab shows it tagged `telegram` | [x] |

@@ -1,12 +1,8 @@
 """Google Calendar — read your real schedule, with a sign-in you can actually do.
 
-Two OAuth-client sources, with the same read-only access:
-
-  DEFAULT   tieru's own OAuth client, shipped below. Click, approve in the
-            browser, done. No files to download.
-
-  OVERRIDE  your own `.tieru/credentials.json`, when present. This replaces the
-            OAuth client configuration only; it does not expand permissions.
+This optional, explicit-configuration integration reads a Google Desktop OAuth
+client from `.tieru/credentials.json`. Tieru does not currently ship a public
+OAuth client or expose a `tieru connect google` command/dashboard connection UI.
 
 Why the read client can live in a public repo: for Google's "Desktop app" OAuth
 client type the secret is not confidential, and Google says so. It identifies
@@ -30,10 +26,9 @@ READONLY_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly"
 DEFAULT_SCOPES = [READONLY_SCOPE]
 TIMEOUT = 30
 
-# tieru's own OAuth client (Desktop app).
-# TODO: Fill in the project-owned Google OAuth client ID and secret before
-# release. Desktop-app client secrets are identifiers, not confidential
-# credentials; every user must still grant access in their own browser.
+# Reserved inactive structure for a possible future project-owned Desktop OAuth
+# client. Empty values deliberately force explicit `.tieru/credentials.json`
+# setup; this is not a supported public sign-in flow in the current release.
 BUNDLED_CLIENT_CONFIG = {
     "installed": {
         "client_id": "",
@@ -48,9 +43,10 @@ _INSTALL_HINT = (
     "Google Calendar support is not installed — run: pip install -e '.[gcal]'"
 )
 _SETUP_HINT = (
-    "Google Calendar is not connected yet. Run `tieru connect google` (or click "
-    "Connect in the dashboard's Connections tab) to sign in — it opens your "
-    "browser and takes about ten seconds."
+    "Google Calendar read access is not configured. Install tieru-agent[gcal], "
+    "create a Google Desktop OAuth client, save its JSON as "
+    "`.tieru/credentials.json`, then call the optional connection helper from "
+    "your own integration. Tieru has no public connect command yet."
 )
 
 
@@ -86,11 +82,11 @@ def _load_credentials(home: Path, scopes: list[str]):
 
 def connect(home: Path) -> str:
     """Open the browser, get consent, cache the token. The ONE place a browser
-    window is allowed to appear — called from the CLI/dashboard, never mid-turn.
+    window is allowed to appear — called by an explicit integration, never mid-turn.
 
-    Uses tieru's bundled client by default. If you dropped your own
-    `.tieru/credentials.json` in place, that OAuth client configuration wins.
-    Both paths request the same read-only scope."""
+    The supported path requires `.tieru/credentials.json`. The inactive bundled
+    placeholder remains empty and cannot start an OAuth flow. Only the read-only
+    calendar scope is requested."""
     try:
         from google_auth_oauthlib.flow import InstalledAppFlow
     except ImportError:

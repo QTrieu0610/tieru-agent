@@ -1,21 +1,48 @@
 ---
 name: Bug report
-about: Something behaves differently than the docs or the code say it should
+about: Report reproducible behavior that differs from Tieru's documented contract
+title: "[Bug] "
 labels: bug
+assignees: ""
 ---
 
-**What happened, and what you expected instead**
+## Summary
 
-**How to reproduce** — the smallest sequence that shows it. A prompt you sent,
-a command you ran, a file you opened.
+<!-- A concise description of the problem. -->
 
-**Your setup**
-- Tieru version / commit:
+## What were you trying to do?
+
+## Expected behavior
+
+## Actual behavior
+
+## Reproduction steps
+
+1.
+2.
+3.
+
+## Environment
+
+- Tieru version or commit:
+- Installation: editable / wheel / sdist / other
+- Operating system:
 - Python version (`python -V`):
-- OS:
-- Provider and model (e.g. `anthropic` / `claude-3-5-sonnet`):
+- Active profile:
+- Relevant model/provider, if any:
 
-**Trace or output** — `python -m tieru.ops.show_trace` renders the last run as a
-timeline; that's usually the fastest thing to paste. Please redact API keys.
+## Doctor result
 
-**Anything you already ruled out?**
+Run `tieru doctor --json` and paste the reviewed output if relevant. Doctor JSON
+is designed to be share-safe, but inspect it before posting.
+
+## Logs or Replay information
+
+Share only bounded, redacted excerpts or Replay metadata needed to reproduce the
+problem. A synthetic reproduction is preferred.
+
+> **Do not paste API keys, tokens, cookies, OAuth files, private Memory, personal
+> Replay payloads, Capsule files, `state.db`, `.env`, or a complete `.tieru/`
+> directory.**
+
+## Additional context
