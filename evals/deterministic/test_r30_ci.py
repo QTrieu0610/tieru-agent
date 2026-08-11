@@ -43,7 +43,7 @@ def test_compatibility_matrix_covers_supported_public_platforms():
     ]
     assert strategy["matrix"]["python-version"] == ["3.11", "3.12"]
     assert job["runs-on"] == "${{ matrix.os }}"
-    assert job["env"]["TIERU_HOME"] == "${{ runner.temp }}/tieru-ci"
+    assert job["env"] == {"PYTHONUTF8": "1"}
 
 
 def test_compatibility_job_uses_the_contributor_contract_and_offline_smokes():
@@ -53,6 +53,11 @@ def test_compatibility_job_uses_the_contributor_contract_and_offline_smokes():
     assert "python -m compileall -q tieru" in commands
     assert 'python -c "import tieru"' in commands
     assert "python -m pytest -q evals/deterministic" in commands
+    test_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Run deterministic suite (live integrations skip honestly)"
+    )
+    assert test_step["env"] == {"TIERU_HOME": "${{ runner.temp }}/tieru-ci"}
     for command in (
         "tieru --help",
         "tieru init --help",
@@ -73,9 +78,15 @@ def test_quality_job_reuses_the_release_contract_once():
     job = _workflow()["jobs"]["quality"]
     commands = _step_text(job)
     assert job["runs-on"] == "ubuntu-latest"
+    assert job["env"] == {"PYTHONUTF8": "1"}
     assert "python -m ruff check tieru evals scripts" in commands
     assert "python scripts/validate_skills.py" in commands
     assert "python -m tieru.ops.release_gate" in commands
+    gate_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Run release gate (tests, build, metadata, and artifact audit)"
+    )
+    assert gate_step["env"] == {"TIERU_HOME": "${{ runner.temp }}/tieru-ci"}
     for script in ("main.js", "util.js", "views.js"):
         assert f"node --check tieru/ops/static/js/{script}" in commands
 
@@ -94,6 +105,7 @@ def test_ci_uses_pinned_official_actions_and_no_secrets():
     assert "pull_request_target" not in lowered
     assert "${{ secrets." not in lowered
     assert not re.search(r"(?:api[_-]?key|token|password)\s*:\s*\S+", lowered)
+    assert text.count("${{ runner.temp }}/tieru-ci") == 2
 
 
 def test_development_metadata_checker_accepts_current_build_metadata():

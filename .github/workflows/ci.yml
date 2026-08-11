@@ -24,7 +24,6 @@ jobs:
         python-version: ["3.11", "3.12"]
     env:
       PYTHONUTF8: "1"
-      TIERU_HOME: ${{ runner.temp }}/tieru-ci
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -43,6 +42,8 @@ jobs:
           python -m compileall -q tieru
           python -c "import tieru"
       - name: Run deterministic suite (live integrations skip honestly)
+        env:
+          TIERU_HOME: ${{ runner.temp }}/tieru-ci
         run: python -m pytest -q evals/deterministic
       - name: Smoke CLI parsers
         run: |
@@ -59,7 +60,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUTF8: "1"
-      TIERU_HOME: ${{ runner.temp }}/tieru-ci
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -87,4 +87,6 @@ jobs:
           node --check tieru/ops/static/js/util.js
           node --check tieru/ops/static/js/views.js
       - name: Run release gate (tests, build, metadata, and artifact audit)
+        env:
+          TIERU_HOME: ${{ runner.temp }}/tieru-ci
         run: python -m tieru.ops.release_gate
