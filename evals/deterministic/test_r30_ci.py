@@ -101,6 +101,11 @@ def test_ci_uses_pinned_official_actions_and_no_secrets():
         "actions/setup-node",
     }
     assert all(re.fullmatch(r"[0-9a-f]{40}", revision) for _, revision in actions)
+    assert dict(actions) == {
+        "actions/checkout": "11bd71901bbe5b1630ceea73d27597364c9af683",
+        "actions/setup-python": "42375524e23c412d93fb67b49958b491fce71c38",
+        "actions/setup-node": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+    }
     lowered = text.lower()
     assert "pull_request_target" not in lowered
     assert "${{ secrets." not in lowered

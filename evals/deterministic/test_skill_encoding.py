@@ -76,6 +76,7 @@ def test_installed_skill_is_written_as_utf8(
     source = (
         f"---\nname: installed-report\ndescription: {DESCRIPTION}\n---\n\n{BODY}\n"
     ).encode()
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(home))
     monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *args, **kwargs: BytesIO(source))
 
@@ -91,6 +92,7 @@ def test_dashboard_edited_skill_is_written_as_utf8(
     path = home / "skills" / "dashboard-report" / "SKILL.md"
     path.parent.mkdir(parents=True)
     content = f"---\nname: dashboard-report\ndescription: {DESCRIPTION}\n---\n\n{BODY}\n"
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(home))
 
     result = memory_action({"action": "save_skill", "path": str(path), "content": content})

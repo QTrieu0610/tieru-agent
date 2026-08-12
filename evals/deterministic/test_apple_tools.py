@@ -106,7 +106,7 @@ def test_calendar_refuses_rather_than_enumerating_everything(monkeypatch):
     monkeypatch.setenv("WAKU_APPLE_CALENDARS", "")
     apple._cache.clear()
     out = apple.read_apple_calendar(1)
-    assert "WAKU_APPLE_CALENDARS" in out
+    assert "TIERU_APPLE_CALENDARS" in out
     assert "name of every calendar" in out, "must tell the user how to find the names"
 
 

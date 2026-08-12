@@ -23,6 +23,7 @@ def _seed(app, session_id, user, assistant):
 
 
 def test_all_history_returns_every_thread(tmp_path, monkeypatch):
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(tmp_path / "home"))
     app = make_waku(tmp_path / "home", client=ScriptedClient([]))
     _seed(app, "dashboard-a", "hi from A", "reply A")
@@ -35,6 +36,7 @@ def test_all_history_returns_every_thread(tmp_path, monkeypatch):
 
 
 def test_single_thread_history_is_scoped(tmp_path, monkeypatch):
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(tmp_path / "home"))
     app = make_waku(tmp_path / "home", client=ScriptedClient([]))
     _seed(app, "dashboard-a", "hi from A", "reply A")
@@ -48,6 +50,7 @@ def test_thread_history_includes_meta(tmp_path, monkeypatch):
     """Regression: switching threads showed only text because that path dropped
     meta. Both the switch and history paths now go through _thread_history, which
     must carry the per-turn meta (gate/stats/tools/model) so cards render full."""
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(tmp_path / "home"))
     app = make_waku(tmp_path / "home", client=ScriptedClient([]))
     meta = {"gate": {"decision": "skip"}, "iterations": 1, "latency_ms": 2400,

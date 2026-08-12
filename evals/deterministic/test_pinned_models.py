@@ -28,6 +28,7 @@ def home(tmp_path, monkeypatch):
     """Point every load_settings() at a throwaway home, run from there so
     apply_settings's find_dotenv writes to a throwaway .env, and clear all
     provider keys so the default shortlist is empty unless a test sets one."""
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("")

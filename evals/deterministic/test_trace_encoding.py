@@ -49,6 +49,7 @@ def test_dashboard_reads_utf8_without_platform_default(tmp_path, monkeypatch):
         json.dumps({"type": "turn_start", "user_message": MESSAGE}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(home))
     original_open = Path.open
 
@@ -73,6 +74,7 @@ def test_dashboard_reports_legacy_non_utf8_trace_without_modifying_it(tmp_path, 
         json.dumps({"type": "turn_start", "user_message": "中文"}, ensure_ascii=False) + "\n"
     ).encode("gbk")
     trace.write_bytes(original)
+    monkeypatch.delenv("TIERU_HOME", raising=False)
     monkeypatch.setenv("WAKU_HOME", str(home))
 
     data = collect()
