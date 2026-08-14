@@ -21,7 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from tieru import __version__
-from tieru.config import ConfigError, Settings, load_settings
+from tieru.config import ConfigError, Settings, load_settings, parse_telegram_allowed_users
 from tieru.db import SCHEMA, _migrate, connect
 from tieru.fabric.availability import AvailabilityService
 from tieru.fabric.candidates import CandidateRegistry
@@ -685,11 +685,19 @@ class DoctorRunner:
 
     def _gateways(self, settings: Settings) -> None:
         gateway_specs = (
-            ("telegram", "Telegram", bool(settings.telegram_token), "TELEGRAM_ALLOWED_USER"),
-            ("discord", "Discord", bool(os.getenv("DISCORD_BOT_TOKEN")), "DISCORD_ALLOWED_USER"),
+            (
+                "telegram", "Telegram", bool(settings.telegram_token),
+                sorted(settings.telegram_allowed_users or parse_telegram_allowed_users()),
+                "TELEGRAM_ALLOWED_USER or TELEGRAM_ALLOWED_USERS",
+            ),
+            (
+                "discord", "Discord", bool(os.getenv("DISCORD_BOT_TOKEN")),
+                [item.strip() for item in os.getenv("DISCORD_ALLOWED_USER", "").split(",")
+                 if item.strip()],
+                "DISCORD_ALLOWED_USER",
+            ),
         )
-        for key, title, configured, allow_env in gateway_specs:
-            allowed = [item.strip() for item in os.getenv(allow_env, "").split(",") if item.strip()]
+        for key, title, configured, allowed, allow_env in gateway_specs:
             if not configured:
                 status, detail = DoctorStatus.OPTIONAL, "not configured"
             elif not allowed:

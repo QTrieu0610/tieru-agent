@@ -28,6 +28,28 @@ DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/v1"
 VERIFIED_GEMMA_MODEL = "gemma4:e2b"
 
 
+def parse_telegram_allowed_users(
+    single: str | None = None, multiple: str | None = None
+) -> set[str]:
+    """Merge the legacy and multi-user Telegram allowlists.
+
+    Telegram user IDs are positive decimal integers. Invalid entries are
+    ignored so a malformed value can never make the gateway less restrictive.
+    """
+    raw = single if single is not None else os.getenv("TELEGRAM_ALLOWED_USER", "")
+    raw += "," + (
+        multiple if multiple is not None else os.getenv("TELEGRAM_ALLOWED_USERS", "")
+    )
+    allowed: set[str] = set()
+    for item in (part.strip() for part in raw.split(",")):
+        if not item.isascii() or not item.isdecimal():
+            continue
+        normalized = item.lstrip("0")
+        if normalized and len(normalized) <= 20:
+            allowed.add(normalized)
+    return allowed
+
+
 class ConfigError(ValueError):
     """A configuration error safe to show directly to the user."""
 
@@ -270,6 +292,7 @@ class Settings:
     experimental: bool = False
     graph_workflows: bool = False
     telegram_token: str = field(default="", repr=False)
+    telegram_allowed_users: tuple[str, ...] = ()
     whatsapp_token: str = field(default="", repr=False)
     whatsapp_phone_number_id: str = ""
     otel_endpoint: str = ""
@@ -929,6 +952,7 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         experimental=_as_bool(value("experimental", False), "experimental"),
         graph_workflows=_as_bool(value("graph_workflows", False), "graph_workflows"),
         telegram_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+        telegram_allowed_users=tuple(sorted(parse_telegram_allowed_users())),
         whatsapp_token=os.getenv("WHATSAPP_TOKEN", ""),
         whatsapp_phone_number_id=os.getenv("WHATSAPP_PHONE_NUMBER_ID", ""),
         otel_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),

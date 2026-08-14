@@ -273,6 +273,38 @@ default portable identity. Capsule is an offline snapshot, not live sync. See
 Tieru also ships the interactive runtime, local dashboard, procedural skills,
 Memory stores, optional browser tools, optional gateways, and MCP integration.
 
+## Telegram
+
+Telegram is a gateway to the same Tieru runtime; it does not create a second
+agent implementation. Install the existing optional dependency:
+
+```bash
+pip install -e ".[telegram]"
+```
+
+Create a bot with BotFather, then configure its token and one or more numeric
+Telegram user IDs. The legacy single-user setting and the comma-separated
+multi-user setting can be used together:
+
+```env
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_ALLOWED_USER=
+TELEGRAM_ALLOWED_USERS=123456789
+```
+
+Start the gateway and open the bot in Telegram:
+
+```bash
+python -m tieru telegram
+```
+
+Then send `/start` and chat normally. Each allowed Telegram user gets an
+isolated conversation session; `/new` clears only that working conversation,
+not long-term memory. Text, Markdown, source-code, CSV, JSON, and other UTF-8
+text documents are supported directly. Images and binary documents such as PDF
+require an enabled Tieru/MCP reader with the relevant capability; otherwise the
+bot reports the limitation instead of pretending it inspected the file.
+
 ## How Tieru Works
 
 ```text
