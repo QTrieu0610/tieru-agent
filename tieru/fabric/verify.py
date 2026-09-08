@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import time
 
+from tieru.context import ContextBuilder
+
 _PROMPT = """Review the answer for obvious incompleteness or contradiction.
 Return only JSON: {{"verified": true/false, "issue_count": <integer>}}.
 Do not provide hidden reasoning.
@@ -25,12 +27,18 @@ def verify_result(
             "provider": decision.provider, "purpose": "fabric_verification",
         })
         client = model_router.client_for(candidate, decision.role)
+        builder = ContextBuilder(max_block_bytes=8192, max_data_bytes=10_000)
+        builder.add_control(
+            _PROMPT.split("Request:", 1)[0], source="fabric_verifier"
+        )
+        builder.add_user(message[:2000], source="user")
+        builder.add_data(answer[:4000], source="model_output")
+        assembly = builder.build()
         response = client.messages.create(
             model=decision.model,
             max_tokens=min(256, decision.profile.max_tokens),
-            messages=[{"role": "user", "content": _PROMPT.format(
-                message=message[:2000], answer=answer[:4000]
-            )}],
+            system=assembly.system,
+            messages=list(assembly.messages),
         )
         text = "".join(block.text for block in response.content if block.type == "text")
         value = json.loads(text[text.index("{"):text.rindex("}") + 1])

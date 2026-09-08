@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "role": "contract_builder",
+  "cases": [
+    {
+      "case_id": "contract-01",
+      "goal": "Read service.log and report the count of distinct 500 errors.",
+      "expected_criteria": ["service.log", "500 error"],
+      "expected_constraints": []
+    },
+    {
+      "case_id": "contract-02",
+      "goal": "Fix the timeout bug in worker.py without modifying test files or changing the public API.",
+      "expected_criteria": ["worker.py", "timeout"],
+      "expected_constraints": ["without modifying test files", "public API"]
+    },
+    {
+      "case_id": "contract-03",
+      "goal": "Clean up temporary cache files in scratch/, but do not delete active.db or alter config.ini.",
+      "expected_criteria": ["scratch"],
+      "expected_constraints": ["do not delete active.db", "alter config.ini"]
+    },
+    {
+      "case_id": "contract-04",
+      "goal": "Cập nhật tài liệu hướng dẫn sử dụng trong README.md nhưng không thay đổi mã nguồn trong thư mục src/.",
+      "expected_criteria": ["README.md"],
+      "expected_constraints": ["không thay đổi mã nguồn trong thư mục src"]
+    },
+    {
+      "case_id": "contract-05",
+      "goal": "Refactor auth_token parser in auth.py ensuring all existing tests pass and zero deprecation warnings.",
+      "expected_criteria": ["auth.py", "tests pass"],
+      "expected_constraints": ["zero deprecation warnings"]
+    }
+  ]
+}

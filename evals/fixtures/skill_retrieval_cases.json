@@ -1,0 +1,94 @@
+{
+  "skills": [
+    {
+      "name": "authentication-debugging",
+      "description": "Diagnose authentication and login failures.",
+      "aliases": ["auth debugging", "login troubleshooting"],
+      "keywords": ["login", "auth", "token", "session", "oauth"],
+      "domains": ["backend", "security"],
+      "embedding": [1, 0, 0, 0, 0, 0]
+    },
+    {
+      "name": "database-tuning",
+      "description": "Improve SQL query and database performance.",
+      "aliases": ["query optimization"],
+      "keywords": ["sql", "database", "index", "performance"],
+      "domains": ["backend", "data"],
+      "embedding": [0, 1, 0, 0, 0, 0]
+    },
+    {
+      "name": "code-review",
+      "description": "Review code changes and pull requests.",
+      "aliases": ["review pull request"],
+      "keywords": ["review", "diff", "quality"],
+      "domains": ["engineering"],
+      "embedding": [0, 0, 1, 0, 0, 0]
+    },
+    {
+      "name": "release-summary",
+      "description": "Inspect a repository and write a release summary.",
+      "aliases": ["release notes"],
+      "keywords": ["repository", "release", "summary"],
+      "domains": ["engineering"],
+      "embedding": [0, 0, 0, 1, 0, 0]
+    },
+    {
+      "name": "calendar-automation",
+      "description": "Create and manage calendar events.",
+      "aliases": ["schedule event"],
+      "keywords": ["calendar", "meeting", "appointment"],
+      "domains": ["productivity"],
+      "embedding": [0, 0, 0, 0, 1, 0]
+    }
+  ],
+  "cases": [
+    {
+      "category": "exact",
+      "query": "authentication-debugging",
+      "expected_skill": "authentication-debugging",
+      "embedding": [1, 0, 0, 0, 0, 0]
+    },
+    {
+      "category": "alias",
+      "query": "login troubleshooting",
+      "expected_skill": "authentication-debugging",
+      "embedding": [1, 0, 0, 0, 0, 0]
+    },
+    {
+      "category": "lexical",
+      "query": "oauth session failure",
+      "expected_skill": "authentication-debugging",
+      "embedding": [1, 0, 0, 0, 0, 0]
+    },
+    {
+      "category": "synonym",
+      "query": "sign-in problem",
+      "expected_skill": "authentication-debugging",
+      "embedding": [1, 0, 0, 0, 0, 0]
+    },
+    {
+      "category": "cross-language",
+      "query": "tối ưu truy vấn cơ sở dữ liệu",
+      "expected_skill": "database-tuning",
+      "embedding": [0, 1, 0, 0, 0, 0]
+    },
+    {
+      "category": "alias",
+      "query": "review pull request",
+      "expected_skill": "code-review",
+      "embedding": [0, 0, 1, 0, 0, 0]
+    },
+    {
+      "category": "multiple",
+      "query": "inspect repository and write a release summary",
+      "expected_skill": "release-summary",
+      "embedding": [0, 0, 0, 1, 0, 0]
+    },
+    {
+      "category": "irrelevant",
+      "query": "what time is it?",
+      "expected_skill": null,
+      "embedding": [0, 0, 0, 0, 0, 1]
+    }
+  ]
+}

@@ -19,6 +19,8 @@ import json
 
 import anthropic
 
+from tieru.context import ContextBuilder
+
 GATE_PROMPT = """\
 You are a retrieval gate for a personal assistant's long-term memory.
 Given the user's message, decide if answering well requires the user's stored
@@ -39,12 +41,20 @@ def should_retrieve(
     """Returns (retrieve?, search_query, reason). Fails open: if the gate
     itself errors, we retrieve — a stale memory beats a lost one."""
     try:
+        builder = ContextBuilder(max_block_bytes=4096)
+        builder.add_control(
+            GATE_PROMPT.replace("User message: {message}", ""),
+            source="memory_gate",
+        )
+        builder.add_user(message, source="user")
+        assembly = builder.build()
         response = client.messages.create(
             model=small_model,
             # generous budget: reasoning models (Kimi K3, ...) spend a thinking
             # block BEFORE the JSON — 100 tokens was truncating the answer away
             max_tokens=600,
-            messages=[{"role": "user", "content": GATE_PROMPT.format(message=message)}],
+            system=assembly.system,
+            messages=list(assembly.messages),
         )
         text = "".join(b.text for b in response.content if b.type == "text")
         if "{" not in text:   # a reasoning-only / truncated reply, not an error

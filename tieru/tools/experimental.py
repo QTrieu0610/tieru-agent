@@ -22,7 +22,7 @@ native event stream on stdout — one JSON object per line. Two things fall out:
 
 Older pi builds without --mode json fall back to the plain `-p` text path.
 
-The other three boxes are still SKELETONS on purpose: each shows the *shape* of
+The other two boxes are still SKELETONS on purpose: each shows the *shape* of
 a capability and returns an honest "coming soon" (terminal/browser tools need a
 real sandbox + safety surface first). Everything here is OFF by default; set
 `TIERU_EXPERIMENTAL=1` to register these tools.
@@ -40,7 +40,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tieru.config import Settings, tieru_env
-from tieru.runtime.subprocesses import executable_argv
+from tieru.memory.personal import redact_secrets
+from tieru.runtime.subprocesses import (
+    PI_PROVIDER,
+    credential_environment,
+    executable_argv,
+    safe_command_for_log,
+)
 from tieru.tools.registry import Tool
 
 PI_INSTALL_HINT = "npm install -g --ignore-scripts @earendil-works/pi-coding-agent"
@@ -98,7 +104,15 @@ def _record_subagent_usage(settings: Settings, tin: int, tout: int) -> None:
         f.write(json.dumps(record) + "\n")
 
 
-def _run_pi_json(cmd: list, workdir: Path, timeout: int, notify):
+def _redact_pi_text(text: str, credential: str) -> str:
+    """Apply Tieru's standard redaction plus the exact configured credential."""
+    safe = redact_secrets(text or "")
+    return safe.replace(credential, "[REDACTED SECRET]") if credential else safe
+
+
+def _run_pi_json(
+    cmd: list, workdir: Path, timeout: int, notify, env: dict[str, str], credential: str
+):
     """Run pi in --mode json, relaying curated events through `notify` as they
     stream. Returns (returncode, reply_text, stderr, raw_lines, tin, tout,
     cost) — returncode None means we killed it at the deadline.
@@ -108,7 +122,7 @@ def _run_pi_json(cmd: list, workdir: Path, timeout: int, notify):
     can)."""
     proc = subprocess.Popen(cmd, cwd=workdir, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                            encoding="utf-8", errors="replace")
+                            encoding="utf-8", errors="replace", env=env)
     lines: queue.Queue = queue.Queue()
     stderr_parts: list[str] = []
 
@@ -136,6 +150,7 @@ def _run_pi_json(cmd: list, workdir: Path, timeout: int, notify):
             continue
         if line is None:  # stdout closed — pi is done
             break
+        line = _redact_pi_text(line, credential)
         raw.append(line)
         try:
             ev = json.loads(line)
@@ -145,7 +160,11 @@ def _run_pi_json(cmd: list, workdir: Path, timeout: int, notify):
         if kind == "message_update":
             delta = (ev.get("assistantMessageEvent") or {})
             if delta.get("type") == "text_delta" and delta.get("delta"):
-                notify("subagent", {"agent": "pi", "type": "text", "delta": delta["delta"]})
+                notify("subagent", {
+                    "agent": "pi",
+                    "type": "text",
+                    "delta": _redact_pi_text(delta["delta"], credential),
+                })
         elif kind == "message_end":
             msg = ev.get("message") or {}
             if msg.get("role") != "assistant":
@@ -161,25 +180,27 @@ def _run_pi_json(cmd: list, workdir: Path, timeout: int, notify):
                 elif c.get("type") == "toolCall":
                     tools_called.append(c.get("name", "?"))
             if texts:
-                reply = "\n".join(t for t in texts if t)
+                reply = _redact_pi_text("\n".join(t for t in texts if t), credential)
             for name in tools_called:
                 notify("subagent", {"agent": "pi", "type": "tool", "tool": name})
         elif kind == "turn_end":
             notify("subagent", {"agent": "pi", "type": "turn_end",
                                 "tokens_in": tin, "tokens_out": tout})
-    return proc.wait(), reply, "".join(stderr_parts), raw, tin, tout, cost
+    return (
+        proc.wait(),
+        reply,
+        _redact_pi_text("".join(stderr_parts), credential),
+        raw,
+        tin,
+        tout,
+        cost,
+    )
 
 # Still-skeleton boxes: name → what it will do, and its box on the whiteboard.
 PLANNED = [
-    {"name": "run_command", "box": "Terminal tool",
-     "description": "Run a shell command in a sandbox and read the output. "
-                    "Needs a real sandbox + safety surface first."},
     {"name": "browse_web", "box": "Browser tool",
      "description": "Open a page and read/click it in a governed browser. (search_web already "
                     "covers read-only web lookups.)"},
-    {"name": "schedule_task", "box": "Cron Job",
-     "description": "Let the agent schedule its own recurring runs. Today `make brief` + a system "
-                    "cron line already does scheduled runs; this would move it in-app."},
 ]
 
 
@@ -219,14 +240,16 @@ def make_delegate_tool(settings: Settings) -> Tool:
         # natively speaks every provider we pin; fall back to pi's own default if
         # this provider isn't mappable. -a/--no-session = headless; stdin=DEVNULL
         # so pi never blocks on a TTY it doesn't have under the server.
-        from tieru.ops.coding_eval import PI_PROVIDER, _key_for
         cmd = executable_argv(pi_bin)
         pi_prov = PI_PROVIDER.get(settings.provider)
+        credential = ""
+        credential_env = ""
         if pi_prov and settings.model:
             cmd += ["--provider", pi_prov, "--model", settings.model]
-            key = _key_for(settings.provider)
-            if key:
-                cmd += ["--api-key", key]
+            role = settings.role("main")
+            credential = settings.secret_for("main")
+            credential_env = role.api_key_env
+        env = credential_environment(credential_env, credential)
         json_mode = _pi_supports_json(pi_bin)
         if json_mode:
             cmd += ["--mode", "json"]
@@ -238,9 +261,9 @@ def make_delegate_tool(settings: Settings) -> Tool:
         if json_mode:
             try:
                 code, reply, stderr, raw_events, tin, tout, cost = _run_pi_json(
-                    cmd, workdir, timeout, notify)
+                    cmd, workdir, timeout, notify, env, credential)
             except OSError as exc:
-                return f"Couldn't launch pi: {exc}"
+                return f"Couldn't launch pi: {_redact_pi_text(str(exc), credential)}"
             _record_subagent_usage(settings, tin, tout)   # the arena's cost now sees pi
             if code is None:
                 return (f"pi was still working after {timeout}s so I stopped it — try a smaller "
@@ -250,22 +273,29 @@ def make_delegate_tool(settings: Settings) -> Tool:
             try:
                 result = subprocess.run(cmd, cwd=workdir, stdin=subprocess.DEVNULL,
                                         capture_output=True, text=True, encoding="utf-8",
-                                        errors="replace", timeout=timeout, check=False)
+                                        errors="replace", timeout=timeout, check=False, env=env)
             except subprocess.TimeoutExpired:
                 return (f"pi was still working after {timeout}s so I stopped it — try a smaller "
                         f"task, or raise TIERU_DELEGATE_TIMEOUT.")
             except OSError as exc:
-                return f"Couldn't launch pi: {exc}"
+                return f"Couldn't launch pi: {_redact_pi_text(str(exc), credential)}"
             code, stdout_text, stderr = result.returncode, result.stdout, result.stderr
+
+        stdout_text = _redact_pi_text(stdout_text, credential)
+        stderr = _redact_pi_text(stderr, credential)
 
         # Full pi transcript alongside the work (workspace) or in the outbox;
         # in json mode the raw event stream is preserved too (pi-events.jsonl).
         transcript = (workdir / "pi-transcript.log") if in_workspace else (
             settings.home / "outbox" / f"delegate-{datetime.now():%Y%m%d-%H%M%S}.log")
         transcript.parent.mkdir(parents=True, exist_ok=True)
-        transcript.write_text(f"$ {' '.join(cmd[:-4])} -p {task!r}   (cwd: {workdir})\n\n"
-                              f"--- reply ---\n{stdout_text}\n--- stderr ---\n{stderr}",
-                              encoding="utf-8")
+        transcript_text = (
+            f"$ {safe_command_for_log(cmd)}   (cwd: {workdir})\n\n"
+            f"--- reply ---\n{stdout_text}\n--- stderr ---\n{stderr}"
+        )
+        transcript.write_text(
+            _redact_pi_text(transcript_text, credential), encoding="utf-8"
+        )
         if raw_events:
             transcript.with_name(transcript.stem + "-events.jsonl").write_text(
                 "".join(raw_events), encoding="utf-8")
@@ -338,7 +368,7 @@ def _stub(name: str, description: str, box: str) -> Tool:
 
 def make_tools(settings: Settings) -> list[Tool]:
     """Experimental tools, registered only when TIERU_EXPERIMENTAL=1: the live
-    pi delegation plus the remaining skeletons."""
+    pi delegation plus the remaining browser/scheduler skeletons."""
     return [make_delegate_tool(settings)] + [
         _stub(p["name"], p["description"], p["box"]) for p in PLANNED
     ]

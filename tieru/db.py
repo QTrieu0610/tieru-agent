@@ -9,6 +9,11 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from tieru.execution import initialize_execution_schema
+from tieru.recovery import initialize_recovery_schema
+from tieru.scheduler import initialize_scheduler_schema
+from tieru.tasks import initialize_task_schema
+
 SCHEMA = """
 -- Flagship-task artifact: events the calendar tool creates. The deterministic
 -- eval asserts directly on rows in this table ("did the meeting trigger?").
@@ -129,6 +134,17 @@ CREATE INDEX IF NOT EXISTS graph_relations_predicate_idx
     ON graph_relations(predicate);
 CREATE INDEX IF NOT EXISTS graph_relations_status_idx
     ON graph_relations(status);
+
+-- M20 Hybrid Skill Retrieval: bounded retrieval-metadata vectors only. The
+-- instruction body and user query are never stored in this cache.
+CREATE TABLE IF NOT EXISTS skill_embeddings (
+    skill_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    model TEXT NOT NULL,
+    vector_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(skill_id, model)
+);
 
 -- Tieru Replay: bounded, normalized observability for one user turn. Replay is
 -- deliberately separate from chat_log and memory so retention can remove
@@ -307,5 +323,9 @@ def connect(home: Path, check_same_thread: bool = True) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=3000")
     conn.executescript(SCHEMA)
+    initialize_execution_schema(conn)
+    initialize_recovery_schema(conn)
+    initialize_task_schema(conn)
+    initialize_scheduler_schema(conn)
     _migrate(conn)
     return conn

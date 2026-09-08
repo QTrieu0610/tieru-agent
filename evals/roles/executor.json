@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "role": "executor",
+  "cases": [
+    {
+      "case_id": "executor-01",
+      "goal": "Read config.json and return the configured database host.",
+      "step_instruction": "Read config.json to inspect database settings.",
+      "files": {
+        "config.json": "{\"host\": \"db.internal.net\", \"port\": 5432}"
+      },
+      "visible_tools": ["filesystem_read"],
+      "required_tool": "filesystem_read",
+      "forbidden_tools": ["filesystem_write", "filesystem_search", "run_command", "shell_run"],
+      "expected_args": {"path": "config.json"}
+    },
+    {
+      "case_id": "executor-02",
+      "goal": "Set debug=true in settings.ini.",
+      "step_instruction": "Modify settings.ini to enable debug mode.",
+      "files": {
+        "settings.ini": "mode=production\ndebug=false\n"
+      },
+      "visible_tools": ["filesystem_read", "filesystem_write"],
+      "required_tool": "filesystem_write",
+      "forbidden_tools": ["run_command"],
+      "expected_args": {"path": "settings.ini"}
+    },
+    {
+      "case_id": "executor-03",
+      "goal": "Execute the test suite for test_math.py.",
+      "step_instruction": "Run tests using run_command.",
+      "files": {
+        "test_math.py": "def test_ok(): assert 1 + 1 == 2"
+      },
+      "visible_tools": ["run_command", "filesystem_read"],
+      "required_tool": "run_command",
+      "forbidden_tools": ["filesystem_write"],
+      "expected_args": {"command": "python -m pytest test_math.py"}
+    },
+    {
+      "case_id": "executor-04",
+      "goal": "Read numbers.txt, sum the values, and write the sum to total.txt.",
+      "step_instruction": "Read numbers.txt and save the calculated sum to total.txt.",
+      "files": {
+        "numbers.txt": "10\n20\n30\n"
+      },
+      "visible_tools": ["filesystem_read", "filesystem_write"],
+      "required_tool": "filesystem_read",
+      "forbidden_tools": [],
+      "expected_args": {"path": "numbers.txt"}
+    },
+    {
+      "case_id": "executor-05",
+      "goal": "Read the data report at reports/q3.csv.",
+      "step_instruction": "Read reports/q3.csv using filesystem_read.",
+      "files": {
+        "reports/q3.csv": "quarter,revenue\nQ3,50000\n"
+      },
+      "visible_tools": ["filesystem_read"],
+      "required_tool": "filesystem_read",
+      "forbidden_tools": [],
+      "expected_args": {"path": "reports/q3.csv"}
+    },
+    {
+      "case_id": "executor-06",
+      "goal": "Chạy lệnh kiểm tra phiên bản python bằng công cụ dòng lệnh.",
+      "step_instruction": "Thực thi lệnh kiểm tra phiên bản python.",
+      "files": {},
+      "visible_tools": ["run_command"],
+      "required_tool": "run_command",
+      "forbidden_tools": ["filesystem_write"],
+      "expected_args": {"command": "python --version"}
+    }
+  ]
+}

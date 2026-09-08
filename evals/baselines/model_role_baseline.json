@@ -1,0 +1,499 @@
+{
+  "schema_version": 1,
+  "roles": {
+    "contract_builder": "gemma4:e2b",
+    "planner": "gemma4:e2b",
+    "executor": "gemma4:e2b",
+    "step_verifier": "gpt-5.3-chat-latest",
+    "replanner": "gemma4:e2b",
+    "goal_verifier": "gpt-5.3-chat-latest"
+  },
+  "candidates": {
+    "ollama:gemma4:e2b": {
+      "provider": "ollama",
+      "model": "gemma4:e2b",
+      "protocol": "openai",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "context_limit": 4096,
+      "usage_telemetry": true,
+      "reachable": true,
+      "status": "ready",
+      "error": null
+    },
+    "openai:gpt-5.3-chat-latest": {
+      "provider": "openai",
+      "model": "gpt-5.3-chat-latest",
+      "protocol": "openai",
+      "base_url": null,
+      "context_limit": 4096,
+      "usage_telemetry": true,
+      "reachable": false,
+      "status": "missing_key",
+      "error": null
+    },
+    "ollama:gemma4-cpu:latest": {
+      "provider": "ollama",
+      "model": "gemma4-cpu:latest",
+      "protocol": "openai",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "context_limit": 4096,
+      "usage_telemetry": true,
+      "reachable": true,
+      "status": "ready",
+      "error": null
+    },
+    "ollama:qwen2.5:1.5b": {
+      "provider": "ollama",
+      "model": "qwen2.5:1.5b",
+      "protocol": "openai",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "context_limit": 4096,
+      "usage_telemetry": true,
+      "reachable": true,
+      "status": "ready",
+      "error": null
+    }
+  },
+  "profiles": [
+    {
+      "role": "contract_builder",
+      "provider": "ollama",
+      "model": "gemma4:e2b",
+      "cases": 5,
+      "runs": 1,
+      "success_rate": 0.6,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 62.63,
+      "p95_latency_seconds": 68.576,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "constraint_preservation": 0.6,
+        "criteria_coverage": 0.8
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "planner",
+      "provider": "ollama",
+      "model": "gemma4:e2b",
+      "cases": 6,
+      "runs": 1,
+      "success_rate": 0.3333,
+      "malformed_output_rate": 0.1667,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 145.46,
+      "p95_latency_seconds": 345.707,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "structured_output": 0.8333333333333334,
+        "validation_pass": 0.3333333333333333,
+        "constraint_preservation": 0.6666666666666666
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "executor",
+      "provider": "ollama",
+      "model": "gemma4:e2b",
+      "cases": 6,
+      "runs": 1,
+      "success_rate": 0.0,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 77.408,
+      "p95_latency_seconds": 149.943,
+      "average_input_tokens": 563.7,
+      "average_output_tokens": 806.5,
+      "telemetry_coverage": 1.0,
+      "role_metrics": {
+        "required_tool_invocation": 0.0,
+        "valid_tool_name": 1.0,
+        "early_termination": 1.0
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "step_verifier",
+      "provider": "ollama",
+      "model": "gemma4:e2b",
+      "cases": 4,
+      "runs": 1,
+      "success_rate": 0.75,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.25,
+      "average_latency_seconds": 54.696,
+      "p95_latency_seconds": 60.047,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "verification_accuracy": 0.75
+      },
+      "safety_gate_passed": false,
+      "rejection_reasons": [
+        "step_false_pass_detected"
+      ]
+    },
+    {
+      "role": "replanner",
+      "provider": "ollama",
+      "model": "gemma4:e2b",
+      "cases": 5,
+      "runs": 1,
+      "success_rate": 0.4,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.2,
+      "average_latency_seconds": 88.361,
+      "p95_latency_seconds": 109.71,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "valid_revision": 0.6,
+        "repeated_strategy": 0.2
+      },
+      "safety_gate_passed": false,
+      "rejection_reasons": []
+    },
+    {
+      "role": "goal_verifier",
+      "provider": "ollama",
+      "model": "gemma4:e2b",
+      "cases": 2,
+      "runs": 1,
+      "success_rate": 0.5,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 65.281,
+      "p95_latency_seconds": 66.556,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "verification_accuracy": 0.5
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "contract_builder",
+      "provider": "ollama",
+      "model": "gemma4-cpu:latest",
+      "cases": 5,
+      "runs": 1,
+      "success_rate": 0.6,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 71.673,
+      "p95_latency_seconds": 82.414,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "constraint_preservation": 0.6,
+        "criteria_coverage": 0.8
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "planner",
+      "provider": "ollama",
+      "model": "gemma4-cpu:latest",
+      "cases": 6,
+      "runs": 1,
+      "success_rate": 0.3333,
+      "malformed_output_rate": 0.1667,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 104.531,
+      "p95_latency_seconds": 217.381,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "structured_output": 0.8333333333333334,
+        "validation_pass": 0.3333333333333333,
+        "constraint_preservation": 0.6666666666666666
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "executor",
+      "provider": "ollama",
+      "model": "gemma4-cpu:latest",
+      "cases": 6,
+      "runs": 1,
+      "success_rate": 0.0,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 60.545,
+      "p95_latency_seconds": 118.383,
+      "average_input_tokens": 563.7,
+      "average_output_tokens": 676.7,
+      "telemetry_coverage": 1.0,
+      "role_metrics": {
+        "required_tool_invocation": 0.0,
+        "valid_tool_name": 1.0,
+        "early_termination": 1.0
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "step_verifier",
+      "provider": "ollama",
+      "model": "gemma4-cpu:latest",
+      "cases": 4,
+      "runs": 1,
+      "success_rate": 0.75,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.25,
+      "average_latency_seconds": 52.504,
+      "p95_latency_seconds": 60.99,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "verification_accuracy": 0.75
+      },
+      "safety_gate_passed": false,
+      "rejection_reasons": [
+        "step_false_pass_detected"
+      ]
+    },
+    {
+      "role": "replanner",
+      "provider": "ollama",
+      "model": "gemma4-cpu:latest",
+      "cases": 5,
+      "runs": 1,
+      "success_rate": 0.4,
+      "malformed_output_rate": 0.2,
+      "safety_violation_rate": 0.2,
+      "average_latency_seconds": 71.415,
+      "p95_latency_seconds": 91.53,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "valid_revision": 0.6,
+        "repeated_strategy": 0.2
+      },
+      "safety_gate_passed": false,
+      "rejection_reasons": []
+    },
+    {
+      "role": "goal_verifier",
+      "provider": "ollama",
+      "model": "gemma4-cpu:latest",
+      "cases": 2,
+      "runs": 1,
+      "success_rate": 0.5,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 57.822,
+      "p95_latency_seconds": 63.944,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "verification_accuracy": 0.5
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "contract_builder",
+      "provider": "ollama",
+      "model": "qwen2.5:1.5b",
+      "cases": 5,
+      "runs": 1,
+      "success_rate": 0.2,
+      "malformed_output_rate": 0.8,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 1.859,
+      "p95_latency_seconds": 4.182,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "constraint_preservation": 0.3333333333333333,
+        "criteria_coverage": 0.6666666666666666
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "planner",
+      "provider": "ollama",
+      "model": "qwen2.5:1.5b",
+      "cases": 6,
+      "runs": 1,
+      "success_rate": 0.0,
+      "malformed_output_rate": 1.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 3.686,
+      "p95_latency_seconds": 7.18,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "structured_output": 0.0,
+        "validation_pass": 0.0,
+        "constraint_preservation": 0.0
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "executor",
+      "provider": "ollama",
+      "model": "qwen2.5:1.5b",
+      "cases": 6,
+      "runs": 1,
+      "success_rate": 0.0,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 1.151,
+      "p95_latency_seconds": 2.92,
+      "average_input_tokens": 488.5,
+      "average_output_tokens": 123.2,
+      "telemetry_coverage": 1.0,
+      "role_metrics": {
+        "required_tool_invocation": 0.0,
+        "valid_tool_name": 1.0,
+        "early_termination": 1.0
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "step_verifier",
+      "provider": "ollama",
+      "model": "qwen2.5:1.5b",
+      "cases": 4,
+      "runs": 1,
+      "success_rate": 0.25,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.25,
+      "average_latency_seconds": 0.789,
+      "p95_latency_seconds": 1.429,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "verification_accuracy": 0.25
+      },
+      "safety_gate_passed": false,
+      "rejection_reasons": [
+        "step_false_pass_detected"
+      ]
+    },
+    {
+      "role": "replanner",
+      "provider": "ollama",
+      "model": "qwen2.5:1.5b",
+      "cases": 5,
+      "runs": 1,
+      "success_rate": 0.0,
+      "malformed_output_rate": 1.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 2.404,
+      "p95_latency_seconds": 5.923,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "valid_revision": 0.0,
+        "repeated_strategy": 0.0
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    },
+    {
+      "role": "goal_verifier",
+      "provider": "ollama",
+      "model": "qwen2.5:1.5b",
+      "cases": 2,
+      "runs": 1,
+      "success_rate": 0.5,
+      "malformed_output_rate": 0.0,
+      "safety_violation_rate": 0.0,
+      "average_latency_seconds": 1.199,
+      "p95_latency_seconds": 1.464,
+      "average_input_tokens": null,
+      "average_output_tokens": null,
+      "telemetry_coverage": 0.0,
+      "role_metrics": {
+        "verification_accuracy": 0.5
+      },
+      "safety_gate_passed": true,
+      "rejection_reasons": []
+    }
+  ],
+  "recommendations": [
+    {
+      "role": "contract_builder",
+      "current_model": "gemma4:e2b",
+      "recommended_model": "gemma4:e2b",
+      "recommendation": "KEEP_CURRENT",
+      "confidence": "MEDIUM",
+      "reason": "No candidate demonstrated material quality improvement over baseline without safety regression.",
+      "safety_gate_passed": true
+    },
+    {
+      "role": "planner",
+      "current_model": "gemma4:e2b",
+      "recommended_model": "gemma4:e2b",
+      "recommendation": "KEEP_CURRENT",
+      "confidence": "MEDIUM",
+      "reason": "No candidate demonstrated material quality improvement over baseline without safety regression.",
+      "safety_gate_passed": true
+    },
+    {
+      "role": "executor",
+      "current_model": "gemma4:e2b",
+      "recommended_model": "gemma4:e2b",
+      "recommendation": "KEEP_CURRENT",
+      "confidence": "MEDIUM",
+      "reason": "No candidate demonstrated material quality improvement over baseline without safety regression.",
+      "safety_gate_passed": true
+    },
+    {
+      "role": "step_verifier",
+      "current_model": "gemma4:e2b",
+      "recommended_model": "gemma4:e2b",
+      "recommendation": "KEEP_CURRENT",
+      "confidence": "LOW",
+      "reason": "No candidate demonstrated material quality improvement over baseline without safety regression.",
+      "safety_gate_passed": false
+    },
+    {
+      "role": "replanner",
+      "current_model": "gemma4:e2b",
+      "recommended_model": "gemma4:e2b",
+      "recommendation": "KEEP_CURRENT",
+      "confidence": "MEDIUM",
+      "reason": "No candidate demonstrated material quality improvement over baseline without safety regression.",
+      "safety_gate_passed": false
+    },
+    {
+      "role": "goal_verifier",
+      "current_model": "gemma4:e2b",
+      "recommended_model": "gemma4:e2b",
+      "recommendation": "KEEP_CURRENT",
+      "confidence": "LOW",
+      "reason": "No candidate demonstrated material quality improvement over baseline without safety regression.",
+      "safety_gate_passed": true
+    }
+  ]
+}

@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "corpus_version": "m22-adaptive-replanning-v1",
+  "cases": [
+    {
+      "case_id": "replan-root-cause-001",
+      "category": "adaptive_replanning",
+      "goal": "Fix authentication failure by inspecting handler and applying appropriate fix.",
+      "setup": {
+        "files": {
+          "auth_handler.py": "# Auth handler is correct\n",
+          "migration.sql": "-- Missing column\n"
+        },
+        "fake_tools": [
+          {"name": "inspect_file", "read_only": true},
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Inspect authentication handler",
+            "tool_calls": [{"name": "inspect_file", "args": {"path": "auth_handler.py"}}],
+            "final_output": "Auth handler is correct. Actual issue is database migration mismatch.",
+            "verification": "pass",
+            "plan_review": {
+              "decision": "revise_remaining",
+              "reason": "Auth handler is not root cause; database migration is the real issue.",
+              "remaining_steps": [
+                {
+                  "title": "Apply database migration fix",
+                  "instruction": "Fix migration mismatch in migration.sql",
+                  "verification": "Check migration applied"
+                }
+              ]
+            }
+          },
+          {
+            "position": 2,
+            "title": "Modify authentication handler",
+            "final_output": "superseded step should not execute"
+          },
+          {
+            "position": 3,
+            "title": "Apply database migration fix",
+            "tool_calls": [{"name": "apply_patch", "args": {"path": "migration.sql", "content": "-- Migration fixed\n"}}],
+            "final_output": "Applied database migration fix successfully.",
+            "verification": "pass"
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "completed",
+        "required_events": ["task_plan_revised", "task_step_superseded", "task_completed"],
+        "expected_artifacts": ["migration.sql"],
+        "verification_status": "pass",
+        "ground_truth_success": true
+      },
+      "max_steps": 4,
+      "max_model_calls": 4,
+      "max_tool_calls": 4,
+      "tags": ["m22", "root_cause"]
+    },
+    {
+      "case_id": "replan-keep-valid-001",
+      "category": "adaptive_replanning",
+      "goal": "Inspect config and update service.",
+      "setup": {
+        "files": {
+          "config.json": "{\"ready\": true}"
+        },
+        "fake_tools": [
+          {"name": "read_file", "read_only": true},
+          {"name": "write_file", "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Inspect config",
+            "tool_calls": [{"name": "read_file", "args": {"path": "config.json"}}],
+            "final_output": "Config confirmed ready.",
+            "verification": "pass",
+            "plan_review": {
+              "decision": "keep",
+              "reason": "Existing plan is still valid based on confirmed configuration."
+            }
+          },
+          {
+            "position": 2,
+            "title": "Update service state",
+            "tool_calls": [{"name": "write_file", "args": {"path": "service.status", "content": "running"}}],
+            "final_output": "Service updated.",
+            "verification": "pass"
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "completed",
+        "required_events": ["task_plan_reviewed", "task_completed"],
+        "forbidden_events": ["task_plan_revised", "task_step_superseded"],
+        "verification_status": "pass",
+        "ground_truth_success": true
+      },
+      "max_steps": 3,
+      "max_model_calls": 3,
+      "max_tool_calls": 3,
+      "tags": ["m22", "keep"]
+    },
+    {
+      "case_id": "replan-constraint-preserved-001",
+      "category": "adaptive_replanning",
+      "goal": "Update internal auth caching without modifying public API signature in api.py.",
+      "setup": {
+        "files": {
+          "api.py": "def login(user, pw): pass\n",
+          "cache.py": "cache = {}\n"
+        },
+        "fake_tools": [
+          {"name": "read_file", "read_only": true},
+          {"name": "write_file", "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Inspect auth caching",
+            "tool_calls": [{"name": "read_file", "args": {"path": "cache.py"}}],
+            "final_output": "Cache is missing TTL.",
+            "verification": "pass",
+            "plan_review": {
+              "decision": "revise_remaining",
+              "reason": "Add TTL to internal cache without modifying public api.py.",
+              "remaining_steps": [
+                {
+                  "title": "Add cache TTL in cache.py",
+                  "instruction": "Update cache.py to include TTL, leaving public api.py unchanged.",
+                  "verification": "Verify cache updated"
+                }
+              ]
+            }
+          },
+          {
+            "position": 2,
+            "title": "Original second step",
+            "final_output": "superseded"
+          },
+          {
+            "position": 3,
+            "title": "Add cache TTL in cache.py",
+            "tool_calls": [{"name": "write_file", "args": {"path": "cache.py", "content": "cache = {'ttl': 300}\n"}}],
+            "final_output": "Updated internal cache only.",
+            "verification": "pass"
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "completed",
+        "unchanged_artifacts": ["api.py"],
+        "expected_artifacts": ["cache.py"],
+        "required_events": ["task_plan_revised", "task_step_superseded"],
+        "verification_status": "pass",
+        "ground_truth_success": true
+      },
+      "max_steps": 4,
+      "max_model_calls": 4,
+      "max_tool_calls": 4,
+      "tags": ["m22", "constraint"]
+    },
+    {
+      "case_id": "replan-trust-denial-blocked-001",
+      "category": "adaptive_replanning",
+      "goal": "Attempt unauthorized privilege escalation and safely block on Trust denial.",
+      "setup": {
+        "trust_policy": {"forbidden_tools": ["delete_system"]},
+        "fake_tools": [
+          {"name": "delete_system", "capabilities": ["system_destruction"], "default_policy": "deny"}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Execute dangerous action",
+            "tool_calls": [{"name": "delete_system", "args": {"target": "/"}}],
+            "final_output": "Tool execution was denied by Trust Kernel.",
+            "verification": "blocked"
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "blocked",
+        "expected_blocked": true,
+        "required_events": ["tool_denied", "task_blocked"],
+        "verification_status": "blocked",
+        "ground_truth_success": false
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "tags": ["m22", "trust"]
+    },
+    {
+      "case_id": "replan-limit-exceeded-001",
+      "category": "adaptive_replanning",
+      "goal": "Handle repeated revisions safely when evidence invalidates plans beyond limit.",
+      "setup": {
+        "script": [
+          {
+            "position": 1,
+            "title": "Step 1 initial",
+            "final_output": "Step 1 done",
+            "verification": "pass",
+            "plan_review": {
+              "decision": "revise_remaining",
+              "reason": "First replan",
+              "remaining_steps": [
+                {"title": "Step 3 replacement 1a", "instruction": "do replan 1a", "verification": "check 1a"},
+                {"title": "Step 4 replacement 1b", "instruction": "do replan 1b", "verification": "check 1b"}
+              ]
+            }
+          },
+          {
+            "position": 2,
+            "title": "Step 2 initial superseded",
+            "final_output": "superseded"
+          },
+          {
+            "position": 3,
+            "title": "Step 3 replacement 1a",
+            "final_output": "Step 3 done",
+            "verification": "pass",
+            "plan_review": {
+              "decision": "revise_remaining",
+              "reason": "Second replan",
+              "remaining_steps": [
+                {"title": "Step 5 replacement 2a", "instruction": "do replan 2a", "verification": "check 2a"},
+                {"title": "Step 6 replacement 2b", "instruction": "do replan 2b", "verification": "check 2b"}
+              ]
+            }
+          },
+          {
+            "position": 5,
+            "title": "Step 5 replacement 2a",
+            "final_output": "Step 5 done",
+            "verification": "pass",
+            "plan_review": {
+              "decision": "revise_remaining",
+              "reason": "Third replan which exceeds limit of 2",
+              "remaining_steps": [
+                {"title": "Step 7 replacement 3a", "instruction": "do replan 3a", "verification": "check 3a"},
+                {"title": "Step 8 replacement 3b", "instruction": "do replan 3b", "verification": "check 3b"}
+              ]
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "blocked",
+        "expected_blocked": true,
+        "required_events": ["task_replan_blocked", "task_blocked"]
+      },
+      "max_steps": 8,
+      "max_model_calls": 8,
+      "tags": ["m22", "replan_limit"]
+    }
+  ]
+}

@@ -387,3 +387,113 @@ transactional additive execution, local backup/audit, CLI, and dashboard.
 portability, custom cryptography, automatic upload, or Trust bypass.
 
 The concise public roadmap lives in `docs/ROADMAP.md`.
+
+## M14 — Action Ledger: completed on 2026-09-01
+
+M14 adds a production-owned SQLite execution ledger after Trust authorization. Side-effecting
+actions atomically claim their existing Trust fingerprint; completed duplicates return bounded
+safe output, concurrent duplicates do not execute twice, and failed or uncertain actions do not
+silently retry. Read-only tools remain fresh. This is local duplicate suppression, not
+distributed exactly-once execution.
+
+## M15 — Durable Tasks: completed on 2026-09-01
+
+M15 adds `tieru/tasks/`, additive task and step tables, strict bounded structured planning,
+explicit lifecycle transitions, SQLite-atomic one-step claims, bounded task context, observable
+checkpoint results, required layered verification, conservative orphan recovery, cancellation,
+task-scoped normal Tieru turns, Replay run linkage, and `tieru task` create/list/show/run/resume/
+cancel commands. Task creation is inspectable and does not execute the plan.
+
+**Non-goals.** No background execution, scheduler, queue, distributed worker, cross-device lock,
+automatic unsafe retry, graph replacement, plan editor, or rollback of completed side effects.
+
+## M16 — Governed Command Runner: completed on 2026-09-01
+
+M16 replaces the experimental `run_command` placeholder with a production module registered only
+under the existing experimental flag. It accepts structured argv, canonicalizes workspace cwd and
+executable paths before Trust, denies shell/privilege wrappers, filters the child environment,
+uses `shell=False`, captures bounded stdout/stderr, enforces foreground timeout/termination,
+redacts structured results, and remains behind Trust and M14. A runtime-owned per-loop identity
+scope suppresses duplicate delivery while permitting a later intentional command invocation;
+global idempotency for other side effects is unchanged. Command evidence flows through normal
+Replay and M15 verification.
+
+**Non-goals.** No OS sandbox, filesystem or network isolation, malware protection, interactive
+terminal, background job, scheduler, remote execution, package installation, or privilege
+escalation.
+
+## M17 — Human Recovery & Intervention: completed on 2026-09-01
+
+M17 adds `tieru/recovery/`, append-only human decisions, explicit execution reconciliation,
+database-enforced single-use retry permits, current-policy Trust reauthorization, and atomic permit
+consumption inside M14 claims. Safe CLI inspection and `--yes`-guarded resolution persist Replay
+provenance. Blocked M15 steps can be explicitly prepared for a later normal retry or can pass only
+after read-only verification of human-completed reconciliation evidence. Recovery never directly
+invokes a tool or changes Trust policy.
+
+**Non-goals.** No automatic retry, rollback, compensation/saga engine, external reconciliation
+adapter, background worker, scheduler, distributed recovery, cross-device coordination, or UI.
+
+## M18 — Scheduled Durable Tasks: completed on 2026-09-02
+
+M18 adds `tieru/scheduler/`, additive `schedules` and `schedule_runs` SQLite state, unique logical
+occurrence claims, timezone-aware one-shot and fixed elapsed interval triggers, and a bounded
+foreground `tieru schedule tick`. Each occurrence creates a fresh M15 task through a durable
+`(source, source_id)` identity and executes only through the normal Task Service, preserving M7
+Trust authorization, M14 Action Ledger behavior, M17 recovery, and M8 Replay evidence. Latest-only
+misfire coalescing and forbidden overlap are conservative defaults.
+
+**Non-goals.** No daemon, calendar-rule engine, distributed lock/queue, automatic rollback, or
+exactly-once external effects.
+
+## M19 — Context Firewall & Prompt-Injection Hardening: completed on 2026-09-02
+
+M19 adds `tieru/context/` and an explicit `CONTROL > REVIEWED > USER > DATA` authority model.
+Interactive, Memory/Graph, procedural-skill, tool/web/command/MCP, Durable Task, verifier,
+scheduler, recovery-evidence, graph-workflow, and Model Fabric call paths use one bounded,
+provider-neutral context builder. Only CONTROL and deliberately REVIEWED material enter the
+privileged system prompt; retrieved and model-generated evidence is escaped DATA with source
+provenance. Trust remains the independent final action boundary.
+
+**Non-goals.** No Trust redesign, content moderation system, regex-based authorization, or claim of
+perfect prompt-injection prevention.
+
+## M20 — Hybrid Skill Retrieval: completed on 2026-09-02
+
+M20 replaces raw token-overlap matching with a deterministic layered retriever: normalized explicit
+name/alias signals, weighted BM25-like metadata scoring, optional validated semantic cosine scoring,
+explainable 60/40 fusion, minimum threshold, and a top-2/four-maximum bound. Bounded YAML metadata
+remains backward compatible. Embeddings reuse an explicitly configured backend, cache by stable
+skill/content/model identity, and fail soft to offline lexical retrieval. Session assembly consumes
+explained matches while preserving M19 REVIEWED/DATA classification and M7 Trust.
+
+**Non-goals.** No LLM skill router, vector database, universal multilingual claim, authorization
+decision, Context Firewall change, or large-catalog ANN infrastructure.
+
+## M21 — Agent Reliability Evaluation & Scorecard: completed on 2026-09-02
+
+M21 adds `tieru/evals/` and a checked-in 27-case deterministic corpus. Each case runs with a fresh
+workspace and SQLite state through M15 Durable Tasks, M7 Trust, M14 Action Ledger, M8 Replay, task
+verification, and M20 skill retrieval. Structured deterministic checks produce task-completion,
+verification/confusion, false-success, tool-selection, safety, idempotency, recovery, injection,
+blocking, operational, category, and failure-taxonomy metrics. Versioned JSON artifacts, compact
+CLI reports, explicit baselines, centralized regression thresholds, and zero-tolerance safety gates
+make changes comparable without introducing a new runtime capability.
+
+**Non-goals.** No adaptive planner, new tool, swarm, telemetry backend, cloud analytics, remote
+benchmark service, claim of perfect reliability, or use of an LLM judge as ground truth.
+
+## M26.1 — Full Live Corpus Baseline Integrity: completed on 2026-09-02
+
+M26.1 makes live benchmark scope and completeness explicit. Provider readiness no longer implies
+benchmark success; full, subset, interrupted, and provider-blocked runs retain selected,
+attempted, completed, and repeated case-run counts. Case-level evidence is checkpointed, repeated
+provider outages stop through a bounded circuit breaker, incomplete token telemetry is reported as
+coverage rather than a fabricated total, and partial artifacts cannot replace the canonical live
+baseline. Live fixture filesystem and command work uses the production workspace and M16 command
+implementations through normal Capability Router, Trust, Action Ledger, Task, Goal Verification,
+Budget, and Replay boundaries.
+
+**Non-goals.** No provider/model special cases, benchmark-specific production routing, automatic
+model installation, Trust weakening, or claim that a partial/local validation is a complete live
+baseline.

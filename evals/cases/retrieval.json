@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "corpus_version": "m21-retrieval-v1",
+  "cases": [
+    {
+      "case_id": "skill-meeting-001", "category": "skill_retrieval",
+      "goal": "Use the meeting prep skill to prepare for tomorrow's design review.",
+      "setup": {"skills": [{"name": "meeting prep", "description": "Prepare agendas and attendee context", "aliases": ["meeting briefing"], "keywords": ["agenda", "design review"], "reviewed": true}], "script": [{"final_output": "Prepared the meeting briefing.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "expected_skill": "meeting prep", "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "skill-weekly-001", "category": "skill_retrieval",
+      "goal": "Create my end of week roundup.",
+      "setup": {"skills": [{"name": "weekly brief", "description": "Summarize weekly work", "aliases": ["end of week roundup"], "keywords": ["weekly", "summary"]}, {"name": "schedule meeting", "description": "Schedule calendar events"}], "script": [{"final_output": "Created the weekly roundup.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "expected_skill": "weekly brief", "verification_status": "pass", "ground_truth_success": true}
+    }
+  ]
+}

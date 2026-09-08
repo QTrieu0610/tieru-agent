@@ -24,6 +24,7 @@ from tieru.memory.episodic.store import SqliteEpisodeStore
 from tieru.memory.graph import GraphService, GraphStore
 from tieru.memory.personal import PersonalMemoryStore, redact_secrets
 from tieru.memory.procedural.loader import SkillLoader
+from tieru.memory.procedural.retrieval import SkillEmbeddingCache
 from tieru.memory.semantic.store import SqliteFactStore
 
 
@@ -63,7 +64,16 @@ class Memory:
         self.episodes = episode_store if episode_store is not None else self._make_episode_store(
             conn, settings, self.store
         )
-        self.skills = SkillLoader([*bundled_skill_dirs(), settings.home / "skills"])
+        bundled = bundled_skill_dirs()
+        embedding_backend = getattr(self.facts, "semantic", None)
+        if not callable(getattr(embedding_backend, "embed", None)):
+            embedding_backend = None
+        self.skills = SkillLoader(
+            [*bundled, settings.home / "skills"],
+            reviewed_dirs=bundled,
+            embedding_backend=embedding_backend,
+            embedding_cache=SkillEmbeddingCache(conn),
+        )
         self.graph = GraphService(GraphStore(conn))
 
     def set_model(self, client, model: str, provider: str) -> None:
@@ -92,6 +102,7 @@ class Memory:
     def gated_retrieve(self, message: str, notify=None) -> str:
         graph_context = self.graph.retrieve_context(message)
         if graph_context:
+            self.last_context_source = "memory_graph"
             if notify:
                 notify("gate", {"decision": "retrieve", "reason": "exact Memory Graph match"})
             return graph_context
@@ -110,18 +121,28 @@ class Memory:
                                             "stop_reason": "decision"})
             notify("gate", {"decision": "retrieve" if retrieve else "skip", "reason": reason})
         if not retrieve:
+            self.last_context_source = "memory"
             return ""
         found = self.facts.search(query, self.settings.retrieval_top_k)
         found += self.episodes.search(query, top_k=3)
         if notify:
             notify("memory_retrieval", {"count": len(found),
                                         "source": ["facts", "episodes"]})
+        self.last_context_source = "memory"
         return "\n".join(found)
 
     # ---- procedural
     def matching_skills(self, message: str) -> str:
         matched = self.skills.match(message)
         return "\n\n".join(f"### {s.name}\n{s.body}" for s in matched)
+
+    def matching_skill_records(self, message: str):
+        """Return matched skills with explicit loader-owned review classification."""
+        return self.skills.match(message)
+
+    def matching_skill_matches(self, message: str):
+        """Return explained M20 matches; relevance never changes review authority."""
+        return self.skills.retrieve(message)
 
     # ---- write paths
     def log_chat(self, user_message: str, reply: str, session_id: str = "default",

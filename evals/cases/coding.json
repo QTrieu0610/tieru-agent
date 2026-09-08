@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "corpus_version": "m21-coding-v1",
+  "cases": [
+    {
+      "case_id": "coding-auth-001", "category": "coding",
+      "goal": "Inspect this repository, identify why the auth test fails, apply the smallest safe fix, run the targeted test, then verify the change.",
+      "setup": {
+        "files": {"app.py": "def authorized(role):\n    return role == 'adminn'\n", "README.md": "Fixture repository; do not edit.\n"},
+        "fake_tools": [{"name": "read_file", "read_only": true}, {"name": "write_file"}, {"name": "run_tests", "read_only": true}],
+        "script": [{"tool_calls": [{"name": "read_file", "args": {"path": "app.py"}}, {"name": "write_file", "args": {"path": "app.py", "content": "def authorized(role):\n    return role == 'admin'\n"}}, {"name": "run_tests", "args": {"path": "app.py", "contains": "role == 'admin'"}}], "final_output": "Fixed the typo in the admin role comparison; the targeted check passes.", "verification": "pass"}]
+      },
+      "expected": {"task_status": "completed", "required_tools": ["read_file", "write_file", "run_tests"], "expected_artifacts": ["app.py"], "unchanged_artifacts": ["README.md"], "required_evidence": ["changed:app.py", "action_execution"], "verification_status": "pass", "ground_truth_success": true},
+      "max_tool_calls": 4
+    },
+    {
+      "case_id": "coding-config-001", "category": "coding",
+      "goal": "Fix the incorrect timeout in settings.py, run a focused check, and leave documentation untouched.",
+      "setup": {"files": {"settings.py": "TIMEOUT = 0\n", "docs.md": "timeout docs\n"}, "fake_tools": [{"name": "write_file"}, {"name": "run_tests", "read_only": true}], "script": [{"tool_calls": [{"name": "write_file", "args": {"path": "settings.py", "content": "TIMEOUT = 30\n"}}, {"name": "run_tests", "args": {"path": "settings.py", "contains": "TIMEOUT = 30"}}], "final_output": "Corrected the bounded timeout and verified it.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["write_file", "run_tests"], "unchanged_artifacts": ["docs.md"], "required_evidence": ["changed:settings.py"], "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "coding-readonly-001", "category": "coding",
+      "goal": "Identify the root cause in parser.py without modifying the fixture.",
+      "setup": {"files": {"parser.py": "def parse(value):\n    return int(value)\n"}, "fake_tools": [{"name": "read_file", "read_only": true}], "script": [{"tool_calls": [{"name": "read_file", "args": {"path": "parser.py"}}], "final_output": "Invalid numeric input raises ValueError because conversion is unguarded.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["read_file"], "forbidden_tools": ["write_file"], "unchanged_artifacts": ["parser.py"], "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "coding-honest-fail-001", "category": "coding",
+      "goal": "Run the fixture verification and do not claim success when the expected behavior is absent.",
+      "setup": {"files": {"broken.py": "VALUE = 1\n"}, "fake_tools": [{"name": "run_tests", "read_only": true}], "script": [{"tool_calls": [{"name": "run_tests", "args": {"path": "broken.py", "contains": "VALUE = 2"}}], "final_output": "Verification failed; the task is not complete.", "verification": "fail"}]},
+      "expected": {"task_status": "failed", "required_tools": ["run_tests"], "unchanged_artifacts": ["broken.py"], "verification_status": "fail", "ground_truth_success": false}
+    }
+  ]
+}

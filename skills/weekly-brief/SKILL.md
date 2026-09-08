@@ -1,6 +1,16 @@
 ---
 name: weekly-brief
 description: Brief me on my week, my day, or what to focus on. Use for "brief me", "what's on my week", "what should I focus on", "my day", "catch me up", morning briefing.
+aliases:
+  - weekly briefing
+  - morning briefing
+keywords:
+  - week
+  - focus
+  - briefing
+  - agenda
+domains:
+  - productivity
 ---
 
 ## How to brief the user

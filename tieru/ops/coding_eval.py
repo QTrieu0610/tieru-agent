@@ -6,9 +6,8 @@ OWN tools. A coding case is a different animal: it hands a real programming job 
 model, then scores by RUNNING the produced code — the `verify` command's exit code
 is the verdict, SWE-bench style, not a judge's opinion.
 
-pi natively speaks every provider we pin, so one harness auditions every brain:
-
-    pi --provider <p> --model <m> --api-key <k> -p "<task>"
+pi natively speaks every provider we pin, so one harness auditions every brain.
+Credentials are passed only in the provider's configured child environment.
 
 Tieru stays the orchestrator; pi stays the contractor — we just get to compare
 contractors. Coding cases live in `evals/coding.jsonl` (separate from the agentic
@@ -27,18 +26,14 @@ import time
 from pathlib import Path
 
 from tieru.loop.models import PROVIDERS
-from tieru.runtime.subprocesses import executable_argv, verify_argv
+from tieru.runtime.subprocesses import (
+    PI_PROVIDER,
+    credential_environment,
+    executable_argv,
+    verify_argv,
+)
 
 _CODING = Path(__file__).resolve().parents[2] / "evals" / "coding.jsonl"
-
-# Tieru provider id -> pi's built-in provider id (see `pi --list-models`).
-PI_PROVIDER = {
-    "anthropic": "anthropic", "openai": "openai", "gemini": "google",
-    "kimi": "moonshotai", "xai": "xai", "glm": "zai",
-    "deepseek": "deepseek", "minimax": "minimax", "openrouter": "openrouter",
-    "opencode_zen": "opencode_zen", "opencode_go": "opencode_go",
-}
-
 
 def load_coding_cases() -> list[dict]:
     """Every coding case in file order; empty list if the file is missing."""
@@ -81,6 +76,8 @@ def run_coding_stream(provider: str, model: str, task: str, files: dict | None,
     if not key:
         prov = PROVIDERS.get(provider)
         return (False, f"no api key ({prov.key_env if prov else provider})", 0.0)
+    prov = PROVIDERS[provider]
+    env = credential_environment(prov.key_env, key)
 
     workdir = Path(tempfile.mkdtemp(prefix=f"code-{provider}-"))
     for name, content in (files or {}).items():
@@ -90,11 +87,11 @@ def run_coding_stream(provider: str, model: str, task: str, files: dict | None,
     t0 = time.perf_counter()
     try:
         proc = subprocess.Popen(
-            [*executable_argv(pi_bin), "--provider", pi_prov, "--model", model, "--api-key", key,
+            [*executable_argv(pi_bin), "--provider", pi_prov, "--model", model,
              "-p", task, "-a", "--no-session"],
             cwd=workdir, stdin=subprocess.DEVNULL,   # no TTY under the server: pi
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,  # must not block on stdin
-            text=True, encoding="utf-8", errors="replace", bufsize=1, env=os.environ.copy())
+            text=True, encoding="utf-8", errors="replace", bufsize=1, env=env)
     except OSError as exc:
         return (False, f"couldn't launch pi: {exc}", round(time.perf_counter() - t0, 1))
 
@@ -150,6 +147,8 @@ def run_coding_case(provider: str, model: str, case: dict,
     if not key:
         prov = PROVIDERS.get(provider)
         return (False, f"no api key ({prov.key_env if prov else provider})", 0.0)
+    prov = PROVIDERS[provider]
+    env = credential_environment(prov.key_env, key)
 
     workdir = Path(tempfile.mkdtemp(prefix=f"code-{provider}-"))
     for name, content in (case.get("files") or {}).items():
@@ -159,10 +158,11 @@ def run_coding_case(provider: str, model: str, case: dict,
     try:
         # -a trusts project-local files; --no-session keeps the run ephemeral.
         subprocess.run(
-            [*executable_argv(pi_bin), "--provider", pi_prov, "--model", model, "--api-key", key,
+            [*executable_argv(pi_bin), "--provider", pi_prov, "--model", model,
              "-p", case["input"], "-a", "--no-session"],
             cwd=workdir, stdin=subprocess.DEVNULL, capture_output=True,
-            text=True, encoding="utf-8", errors="replace", timeout=timeout, check=False)
+            text=True, encoding="utf-8", errors="replace", timeout=timeout, check=False,
+            env=env)
     except subprocess.TimeoutExpired:
         return (False, f"pi timed out after {timeout}s", round(time.perf_counter() - t0, 1))
     except OSError as exc:

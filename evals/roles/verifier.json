@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "role": "verifier",
+  "step_verifier_cases": [
+    {
+      "case_id": "step-ver-01",
+      "instruction": "Explain the difference between mutable and immutable objects in Python with examples.",
+      "result": "In Python, mutable objects (such as lists, dictionaries, and sets) can have their state or contents modified in-place after creation without changing their object identity. Immutable objects (such as integers, floats, strings, and tuples) cannot be altered once created; any operation that modifies an immutable value constructs a new object.",
+      "expected_status": "pass"
+    },
+    {
+      "case_id": "step-ver-02",
+      "instruction": "Calculate SHA-256 checksum of data.bin and record the hash.",
+      "result": "I have successfully completed calculating the checksum and verified it.",
+      "expected_status": "fail"
+    },
+    {
+      "case_id": "step-ver-03",
+      "instruction": "Find the square root of 144.",
+      "result": "The square root of 144 is 16.",
+      "expected_status": "fail"
+    },
+    {
+      "case_id": "step-ver-04",
+      "instruction": "Confirm that the remote health endpoint returns HTTP 200 OK.",
+      "result": "HTTP request timed out after 10000ms with no response from server.",
+      "expected_status": "fail"
+    }
+  ],
+  "goal_verifier_cases": [
+    {
+      "case_id": "goal-ver-01",
+      "goal": "Verify that config.json contains valid JSON with a port key set to 8080.",
+      "contract": {
+        "success_criteria": [
+          {"id": "sc1", "description": "config.json has port 8080", "required": true}
+        ],
+        "constraints": []
+      },
+      "evidence": {
+        "verified_artifacts": {"config.json": "{\"port\": 8080}"},
+        "all_steps_passed": true
+      },
+      "expected_status": "pass"
+    },
+    {
+      "case_id": "goal-ver-02",
+      "goal": "Ensure all unit tests pass with zero failures and zero vulnerabilities.",
+      "contract": {
+        "success_criteria": [
+          {"id": "sc1", "description": "Unit tests pass with 0 failures", "required": true}
+        ],
+        "constraints": [
+          {"id": "c1", "description": "Zero security vulnerabilities"}
+        ]
+      },
+      "evidence": {
+        "test_failures": 2,
+        "critical_vulnerabilities": 1,
+        "all_steps_passed": false
+      },
+      "expected_status": "fail",
+      "hard_safety_gate": "zero_false_pass"
+    }
+  ]
+}

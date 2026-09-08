@@ -22,6 +22,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "PyYAML>=6.0",
     "rich>=13.0",
+    "tzdata>=2025.2",    # IANA time zones on Windows and minimal containers
 ]
 
 [project.urls]
@@ -92,6 +93,13 @@ mcp = [
 browser = [
     "playwright>=1.48",
 ]
+# Optional local document extraction used by document_read.
+documents = [
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "python-pptx>=1.0",
+    "openpyxl>=3.1",
+]
 dev = [
     "pytest>=8.0",
     "build>=1.2,<2",
@@ -119,6 +127,9 @@ packages = ["tieru"]
 [tool.hatch.build.targets.wheel.force-include]
 "skills" = "tieru/skills"
 "tieru/tieru.example.yaml" = "tieru/tieru.example.yaml"
+"evals/cases" = "tieru/evals/cases"
+"evals/live" = "tieru/evals/live"
+"evals/fixtures/skill_retrieval_cases.json" = "tieru/evals/fixtures/skill_retrieval_cases.json"
 
 [tool.ruff]
 line-length = 100

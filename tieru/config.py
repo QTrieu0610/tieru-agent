@@ -298,6 +298,9 @@ class Settings:
     otel_endpoint: str = ""
     profile: str = "default"
     roles: dict[str, ModelRole] = field(default_factory=dict)
+    cognitive_roles: dict[str, ModelRole] = field(default_factory=dict)
+    role_routing_enabled: bool = False
+    role_policy_path: Path | None = None
     providers: dict[str, ProviderConfig] = field(
         default_factory=lambda: dict(BUILTIN_PROVIDERS)
     )
@@ -309,10 +312,23 @@ class Settings:
     role_api_keys: dict[str, str] = field(default_factory=dict, repr=False)
 
     def role(self, name: str) -> ModelRole:
-        if name not in ROLE_NAMES:
-            raise ConfigError(f"Unknown model role '{name}'; expected one of: {', '.join(ROLE_NAMES)}")
+        cognitive_map = {
+            "contract_builder": "small",
+            "planner": "small",
+            "executor": "main",
+            "step_verifier": "judge",
+            "replanner": "small",
+            "goal_verifier": "judge",
+        }
         if name in self.roles:
             return self.roles[name]
+        if name in self.cognitive_roles:
+            return self.cognitive_roles[name]
+        if name in cognitive_map:
+            return self.role(cognitive_map[name])
+        if name not in ROLE_NAMES:
+            valid_roles = list(ROLE_NAMES) + list(cognitive_map.keys())
+            raise ConfigError(f"Unknown model role '{name}'; expected one of: {', '.join(valid_roles)}")
         provider_name = self.provider
         provider = self.providers.get(provider_name)
         if provider is None:
@@ -800,6 +816,43 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         if small.provider == main.provider:
             role_api_keys.setdefault("small", generic_key)
 
+    cognitive_map = {
+        "contract_builder": "small",
+        "planner": "small",
+        "executor": "main",
+        "step_verifier": "judge",
+        "replanner": "small",
+        "goal_verifier": "judge",
+    }
+    cognitive_roles: dict[str, ModelRole] = {}
+    roles_block = data.get("roles") if isinstance(data.get("roles"), dict) else {}
+    for cog_name, broad_fallback in cognitive_map.items():
+        cog_model = overrides.get(f"{cog_name}_model") or _first_env((f"TIERU_{cog_name.upper()}_MODEL",), (), used)
+        cog_provider = overrides.get(f"{cog_name}_provider") or _first_env((f"TIERU_{cog_name.upper()}_PROVIDER",), (), used)
+        if cog_name in roles_block and isinstance(roles_block[cog_name], dict):
+            cog_r = _role_from_mapping(cog_name, roles_block[cog_name], providers)
+            cognitive_roles[cog_name] = cog_r
+        elif cog_model:
+            base_r = roles[broad_fallback]
+            p_name = cog_provider or base_r.provider
+            p_cfg = providers.get(p_name)
+            if p_cfg is None:
+                raise ConfigError(f"Cognitive role '{cog_name}' references unknown provider '{p_name}'")
+            cognitive_roles[cog_name] = ModelRole(
+                provider=p_name,
+                protocol=p_cfg.protocol,
+                model=str(cog_model),
+                base_url=p_cfg.base_url,
+                api_key_env=p_cfg.api_key_env,
+            )
+
+    role_routing_enabled = _as_bool(
+        value("role_routing_enabled", data.get("role_routing", {}).get("enabled", False) if isinstance(data.get("role_routing"), dict) else False),
+        "role_routing_enabled",
+    )
+    role_policy_raw = value("role_policy_path", data.get("role_routing", {}).get("policy_path") if isinstance(data.get("role_routing"), dict) else None)
+    role_policy_path = Path(role_policy_raw) if role_policy_raw else None
+
     settings = Settings(
         provider=main.provider,
         api_key=role_api_keys.get("main", ""),
@@ -958,6 +1011,9 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         otel_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
         profile=profile,
         roles=roles,
+        cognitive_roles=cognitive_roles,
+        role_routing_enabled=role_routing_enabled,
+        role_policy_path=role_policy_path,
         providers=providers,
         config_path=config_path,
         compatibility_mode=legacy_home or bool(used),

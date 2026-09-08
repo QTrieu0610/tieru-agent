@@ -17,6 +17,7 @@ from datetime import date
 
 import anthropic
 
+from tieru.context import ContextBuilder
 from tieru.memory.episodic.store import SqliteEpisodeStore
 from tieru.memory.semantic.store import SqliteFactStore
 
@@ -52,10 +53,18 @@ def consolidate_if_due(
 
     log = "\n".join(f"{r['role']}: {r['content']}" for r in rows)
     try:
+        builder = ContextBuilder(max_block_bytes=12_000, max_data_bytes=16_000)
+        builder.add_control(
+            SUMMARIZER_PROMPT.replace("Exchanges:\n{log}", ""),
+            source="memory_consolidation",
+        )
+        builder.add_data(log, source="conversation_history")
+        assembly = builder.build()
         response = client.messages.create(
             model=small_model,
             max_tokens=600,
-            messages=[{"role": "user", "content": SUMMARIZER_PROMPT.format(log=log)}],
+            system=assembly.system,
+            messages=list(assembly.messages),
         )
         text = "".join(b.text for b in response.content if b.type == "text")
         distilled = json.loads(text[text.index("{") : text.rindex("}") + 1])

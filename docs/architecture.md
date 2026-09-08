@@ -37,8 +37,9 @@ flowchart TB
 The request path is:
 
 1. A gateway accepts text and delegates lifecycle work to **Tieru Runtime**.
-2. The runtime assembles bounded **Working Context** from the editable persona,
-   recent history, gated relevant memory, and matching skills.
+2. The runtime assembles bounded **Working Context** through the M19 Context Firewall. Tieru-owned
+   CONTROL and reviewed guidance remain privileged; recent history, gated memory/graph evidence,
+   unreviewed skills, and external/tool results are escaped DATA outside the system prompt.
 3. The **Agent Loop** calls the selected model role until it returns a reply or
    reaches the iteration guard.
 4. Tool requests pass through the central permission boundary before
@@ -131,11 +132,58 @@ rejects navigation outside configured domains before Playwright runs. See
 ### Tieru Tools
 
 Built-in tools cover local memory administration, skills, scheduling, message
-drafting, search, and workspace operations. Optional tools and gateways remain
+drafting, search, weather, and workspace operations. `ToolRegistry` owns validated
+declarations and Trust classification; `ToolExecutor` validates structured arguments,
+authorizes immediately before execution, and converts timeout or tool exceptions into
+bounded failures without ending the session. Optional tools and gateways remain
 configuration-gated. MCP servers can add namespaced tools through `.tieru/mcp.json`.
 The configured stdio process must first pass Trust as `process_execution`; each
 result is redacted/bounded, and each discovered tool still passes through the
 same permission registry.
+
+Web research uses two read-only structured tools: `web_search` returns bounded,
+de-duplicated result metadata, then `web_fetch` retrieves one selected public URL
+with retry, timeout, and content-size limits. Fetched text is explicitly untrusted;
+the loop retains successful fetch URLs as provenance, removes unverified URLs from
+the final answer, and appends exact fetched sources when needed. These remain the
+default path. When JavaScript, navigation, or interaction is required, the optional
+Playwright tools reuse the registry, Trust/Permission boundary, Replay, and final
+synthesis contract; only `browser_read` contributes page evidence.
+
+Local-computer tools resolve every filesystem and document path against the current
+workspace before access, reject traversal and escaping symlinks, and bound reads,
+searches, parser output, and writes. Document extraction supports text/JSON/CSV plus
+PDF and Office formats through the optional `documents` extra; scanned/image-only
+content returns a controlled unsupported result. `run_command` is opt-in, argv-only,
+Trust-governed, runtime-scoped through the Action Ledger, environment-filtered, and
+foreground-only; the legacy `shell_run` remains restricted and foreground-only in
+the workspace with a fixed timeout and bounded redacted output. It requires approval
+by default and rejects shell chaining, background execution, installs, and obvious
+destructive commands. All actions use the same Trust and Replay lifecycle.
+
+Coding tools build on the same workspace object. `code_search` and `code_read` inspect
+bounded source text; `code_patch` performs one exact, unique, size-bounded context
+replacement through an approved atomic write and fails without mutation on mismatch.
+Dedicated `git_status`, `git_diff`, and `git_log` construct fixed read-only argv; no
+stage, commit, push, merge, reset, checkout, or branch mutation is exposed, including
+through `shell_run`. Four structured GitHub readers use fixed `gh` argv for repository,
+issue, PR, and CI data only. The edit workflow records patch, test output, and actual
+diff observations in Replay before bounded final synthesis.
+
+The normal runtime uses the M5-M9 direct agent loop. M10-Lite is an isolated explicit
+entry point and is not called by the application or graph paths. Its deterministic
+contracts pass, but live `ollama/gemma4:e2b` is **BLOCKED BY MODEL CAPABILITY**: the
+model returns final before any tool execution. Trace evidence shows no loop,
+permission, Trust Kernel, or tool-runtime failure.
+
+The isolated M10-Lite controller uses the same tool-call and execution components
+proven by M5-M9. There is no upfront planner, `plan_task`, replanning, or semantic-plan executor.
+Each iteration sees the original goal, concise verified observations, available tools,
+and current step count, then returns exactly one tool call or final. The controller
+rejects duplicate `(tool, normalized_args)` calls before execution, bounds failures,
+no-progress, steps, and wall-clock time, and enforces dedicated-tool routing before
+shell execution. Permission denial stays observable but cannot be bypassed. Final
+synthesis is isolated from proposed answers and receives only real observations.
 
 ### Tracing, Replay, and evaluation
 
@@ -165,6 +213,19 @@ draft writes and collision-safe installation into `TIERU_HOME/skills`; the
 existing `SkillLoader` remains the sole runtime consumer. Forge does not monitor
 activity, detect repetition, replay side effects, or grant permissions. See
 [Skill Forge](SKILL_FORGE.md).
+
+The M20 retrieval layer inside `SkillLoader` ranks bounded metadata through explicit canonical and
+alias matches, weighted BM25-like lexical evidence, and an optional cached semantic backend. It is
+thresholded, top-k bounded, explainable, and fully functional offline. Retrieval changes relevance
+only: packaged/approved skills remain M19 REVIEWED material, arbitrary generated skills remain DATA,
+and every resulting tool action still crosses Trust. See [Hybrid Skill Retrieval](SKILL_RETRIEVAL.md).
+
+M21 adds an observation layer above these runtime components. Versioned cases enter through the
+normal task/tool boundaries; isolated state, Replay, durable checkpoints, Trust decisions, Action
+Ledger rows, verification, retrieval, and artifact hashes become structured evidence. A
+deterministic scorer and optional tool-free judge produce category scorecards and versioned baseline
+comparisons. The evaluator cannot authorize actions, call tool implementations directly, or mutate
+task state to help a case succeed. See [Reliability Evaluation](RELIABILITY_EVAL.md).
 
 ### Tieru Shadow
 

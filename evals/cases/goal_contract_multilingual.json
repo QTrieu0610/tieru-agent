@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "corpus_version": "m23-1-goal-contract-multilingual-v1",
+  "cases": [
+    {
+      "case_id": "goal-vi-public-api-001",
+      "category": "goal_contract",
+      "goal": "Sửa lỗi authentication nhưng không được thay đổi public API.",
+      "setup": {
+        "files": {
+          "src/auth/login.py": "def login(user, pw): return True\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]},
+          {"name": "run_tests", "read_only": true}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Sửa auth logic và sửa đổi signature hàm login",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "src/auth/login.py", "content": "def login(user, pw, token, extra): return True\n"}}
+            ],
+            "final_output": "Đã sửa auth và đổi signature public API.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_terminal",
+              "summary": "Constraint violation: không được thay đổi public API (public API modified)."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "failed",
+        "ground_truth_success": false
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23_1", "vietnamese", "public_api_constraint"]
+    },
+    {
+      "case_id": "goal-vi-false-green-002",
+      "category": "goal_contract",
+      "goal": "Sửa test đang fail nhưng đừng xóa, skip hoặc xfail test.",
+      "setup": {
+        "files": {
+          "tests/test_auth.py": "def test_login(): assert False\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Skip test đang fail",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "tests/test_auth.py", "content": "@pytest.mark.skip\ndef test_login(): assert False\n"}}
+            ],
+            "final_output": "Đã skip test để suite xanh.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_terminal",
+              "summary": "Constraint violation: Đừng xóa hoặc skip test đang fail (tests disabled or skipped)."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "failed",
+        "ground_truth_success": false
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23_1", "vietnamese", "false_green_catch"]
+    },
+    {
+      "case_id": "goal-vi-scope-003",
+      "category": "goal_contract",
+      "goal": "Chỉ sửa file trong src/auth/ và chạy test liên quan.",
+      "setup": {
+        "files": {
+          "src/auth/token.py": "TOKEN = 'secret'\n",
+          "src/billing/invoice.py": "INVOICE = 100\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Sửa nhầm file billing ngoài phạm vi",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "src/billing/invoice.py", "content": "INVOICE = 200\n"}}
+            ],
+            "final_output": "Đã sửa file billing.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_terminal",
+              "summary": "Constraint violation: Chỉ sửa file trong src/auth/ (unrelated files modified)."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "failed",
+        "ground_truth_success": false
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23_1", "vietnamese", "scope_constraint"]
+    },
+    {
+      "case_id": "goal-vi-compat-004",
+      "category": "goal_contract",
+      "goal": "Fix lỗi login và phải giữ backward compatibility.",
+      "setup": {
+        "files": {
+          "src/auth/service.py": "def auth(): pass\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]},
+          {"name": "run_tests", "read_only": true}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Sửa lỗi login an toàn",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "src/auth/service.py", "content": "def auth(legacy=True): return True\n"}}
+            ],
+            "final_output": "Đã sửa lỗi login an toàn, tương thích ngược hoàn toàn.",
+            "verification": "pass"
+          },
+          {
+            "position": 2,
+            "title": "Chạy suite kiểm tra tương thích",
+            "tool_calls": [
+              {"name": "run_tests", "args": {"path": "src/auth/service.py", "contains": "legacy=True"}}
+            ],
+            "final_output": "Tất cả test tương thích pass.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "pass",
+              "summary": "Tất cả tiêu chí hoàn thành, giữ nguyên backward compatibility."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "completed",
+        "verification_status": "pass",
+        "ground_truth_success": true
+      },
+      "max_steps": 4,
+      "max_model_calls": 4,
+      "max_tool_calls": 4,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23_1", "vietnamese", "pass"]
+    }
+  ]
+}

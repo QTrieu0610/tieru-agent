@@ -135,7 +135,7 @@ class PersonalMemoryStore:
         content = content.strip()
         if not content:
             raise ValueError("memory content must not be empty")
-        if contains_secret(content):
+        if contains_secret(content) or contains_secret(subject):
             raise UnsafeMemoryError("refusing to store content that looks like a secret")
         if kind not in ("fact", "episode"):
             raise ValueError("kind must be fact or episode")
@@ -241,16 +241,25 @@ class PersonalMemoryStore:
         if unknown:
             raise ValueError(f"unsupported memory fields: {', '.join(sorted(unknown))}")
         content = str(changes.get("content", current.content)).strip()
-        if contains_secret(content):
-            raise UnsafeMemoryError("refusing to store content that looks like a secret")
         subject = str(changes.get("subject", current.subject))
+        provenance = str(changes.get("provenance", current.provenance))
         happened_at = str(changes.get("happened_at", current.happened_at))
+        if any(contains_secret(value) for value in (content, subject, provenance, happened_at)):
+            raise UnsafeMemoryError("refusing to store content that looks like a secret")
         importance = min(1.0, max(0.0, float(changes.get("importance", current.importance))))
         trusted = int(bool(changes.get("trusted", current.trusted)))
-        provenance = str(changes.get("provenance", current.provenance))
         fingerprint = _fingerprint(current.kind, subject, content, happened_at)
         now = datetime.now(UTC).isoformat(timespec="seconds")
         kind, row_id = self._parts(memory_id)
+        table = "facts" if kind == "fact" else "episodes"
+        duplicate = self.conn.execute(
+            f"SELECT id FROM {table} WHERE fingerprint=? AND id<>? LIMIT 1",
+            (fingerprint, row_id),
+        ).fetchone()
+        if duplicate is not None:
+            raise ValueError(
+                f"update would duplicate active memory {kind}:{duplicate['id']}"
+            )
         if kind == "fact":
             self.conn.execute(
                 """UPDATE facts SET content=?, subject=?, importance=?, trusted=?, provenance=?,

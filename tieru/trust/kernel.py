@@ -38,7 +38,10 @@ class TrustKernel:
             "risk": decision.risk.value,
             "allowed": decision.allowed,
             "approval_required": decision.approval_required,
+            "confirmation_required": decision.approval_required,
             "reason_codes": list(decision.reason_codes),
+            "reason_code": decision.reason_codes[0] if decision.reason_codes else "unspecified",
+            "matched_policy": decision.matched_policy,
             "fingerprint": decision.action_fingerprint,
         }
 

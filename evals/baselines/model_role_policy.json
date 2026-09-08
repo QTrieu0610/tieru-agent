@@ -1,0 +1,222 @@
+{
+  "schema_version": 1,
+  "generated_from_baseline": "evals/baselines/model_role_baseline.json",
+  "baseline_hash": "a14e4848a8e0beeb00522169e14ca1ae63f05f6a0f47bd35e045844d1f1ea41c",
+  "corpus_hash": "48f4faf19bbe9f56d61121ccb05018572495b2eeb0f19fe6f9b8273636ec99a7",
+  "created_at": "2026-09-04T07:23:00Z",
+  "assignments": {
+    "contract_builder": {
+      "role": "contract_builder",
+      "primary_provider": "ollama",
+      "primary_model": "gemma4:e2b",
+      "fallback_provider": null,
+      "fallback_model": null,
+      "evidence_source": "evals/baselines/model_role_baseline.json",
+      "confidence": "MEDIUM",
+      "tool_calling_required": false,
+      "tools_must_be_empty": true,
+      "selection_source": "default"
+    },
+    "planner": {
+      "role": "planner",
+      "primary_provider": "ollama",
+      "primary_model": "gemma4:e2b",
+      "fallback_provider": null,
+      "fallback_model": null,
+      "evidence_source": "evals/baselines/model_role_baseline.json",
+      "confidence": "MEDIUM",
+      "tool_calling_required": false,
+      "tools_must_be_empty": true,
+      "selection_source": "default"
+    },
+    "executor": {
+      "role": "executor",
+      "primary_provider": "ollama",
+      "primary_model": "gemma4:e2b",
+      "fallback_provider": null,
+      "fallback_model": null,
+      "evidence_source": "evals/baselines/model_role_baseline.json",
+      "confidence": "MEDIUM",
+      "tool_calling_required": true,
+      "tools_must_be_empty": false,
+      "selection_source": "default"
+    },
+    "step_verifier": {
+      "role": "step_verifier",
+      "primary_provider": "openai",
+      "primary_model": "gpt-5.3-chat-latest",
+      "fallback_provider": null,
+      "fallback_model": null,
+      "evidence_source": "evals/baselines/model_role_baseline.json",
+      "confidence": "LOW",
+      "tool_calling_required": false,
+      "tools_must_be_empty": true,
+      "selection_source": "default"
+    },
+    "replanner": {
+      "role": "replanner",
+      "primary_provider": "ollama",
+      "primary_model": "gemma4:e2b",
+      "fallback_provider": null,
+      "fallback_model": null,
+      "evidence_source": "evals/baselines/model_role_baseline.json",
+      "confidence": "MEDIUM",
+      "tool_calling_required": false,
+      "tools_must_be_empty": true,
+      "selection_source": "default"
+    },
+    "goal_verifier": {
+      "role": "goal_verifier",
+      "primary_provider": "openai",
+      "primary_model": "gpt-5.3-chat-latest",
+      "fallback_provider": null,
+      "fallback_model": null,
+      "evidence_source": "evals/baselines/model_role_baseline.json",
+      "confidence": "LOW",
+      "tool_calling_required": false,
+      "tools_must_be_empty": true,
+      "selection_source": "default"
+    }
+  },
+  "evidence_summary": {
+    "eligible_role_changes": [],
+    "rejected_role_changes": [
+      {
+        "role": "contract_builder",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "gemma4-cpu:latest",
+        "quality_delta": 0.0,
+        "safety_gate_passed": true,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "contract_builder",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "qwen2.5:1.5b",
+        "quality_delta": -0.4,
+        "safety_gate_passed": true,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "planner",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "gemma4-cpu:latest",
+        "quality_delta": 0.0,
+        "safety_gate_passed": true,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "planner",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "qwen2.5:1.5b",
+        "quality_delta": -0.3333,
+        "safety_gate_passed": true,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "executor",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "gemma4-cpu:latest",
+        "quality_delta": 0.0,
+        "safety_gate_passed": true,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "executor",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "qwen2.5:1.5b",
+        "quality_delta": 0.0,
+        "safety_gate_passed": true,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "step_verifier",
+        "current_model": "gpt-5.3-chat-latest",
+        "candidate_model": "gemma4:e2b",
+        "quality_delta": 0.75,
+        "safety_gate_passed": false,
+        "confidence": "LOW",
+        "rejection_reason": "hard_safety_failure"
+      },
+      {
+        "role": "step_verifier",
+        "current_model": "gpt-5.3-chat-latest",
+        "candidate_model": "gemma4-cpu:latest",
+        "quality_delta": 0.75,
+        "safety_gate_passed": false,
+        "confidence": "LOW",
+        "rejection_reason": "hard_safety_failure"
+      },
+      {
+        "role": "step_verifier",
+        "current_model": "gpt-5.3-chat-latest",
+        "candidate_model": "qwen2.5:1.5b",
+        "quality_delta": 0.25,
+        "safety_gate_passed": false,
+        "confidence": "LOW",
+        "rejection_reason": "hard_safety_failure"
+      },
+      {
+        "role": "replanner",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "gemma4-cpu:latest",
+        "quality_delta": 0.0,
+        "safety_gate_passed": false,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "replanner",
+        "current_model": "gemma4:e2b",
+        "candidate_model": "qwen2.5:1.5b",
+        "quality_delta": -0.4,
+        "safety_gate_passed": true,
+        "confidence": "MEDIUM",
+        "rejection_reason": "insufficient_quality_delta"
+      },
+      {
+        "role": "goal_verifier",
+        "current_model": "gpt-5.3-chat-latest",
+        "candidate_model": "gemma4:e2b",
+        "quality_delta": 0.5,
+        "safety_gate_passed": true,
+        "confidence": "LOW",
+        "rejection_reason": "confidence_gate_failed"
+      },
+      {
+        "role": "goal_verifier",
+        "current_model": "gpt-5.3-chat-latest",
+        "candidate_model": "gemma4-cpu:latest",
+        "quality_delta": 0.5,
+        "safety_gate_passed": true,
+        "confidence": "LOW",
+        "rejection_reason": "confidence_gate_failed"
+      },
+      {
+        "role": "goal_verifier",
+        "current_model": "gpt-5.3-chat-latest",
+        "candidate_model": "qwen2.5:1.5b",
+        "quality_delta": 0.5,
+        "safety_gate_passed": true,
+        "confidence": "LOW",
+        "rejection_reason": "confidence_gate_failed"
+      }
+    ],
+    "stale_evidence": false,
+    "baseline_artifact": "evals/baselines/model_role_baseline.json",
+    "roles_profiled": [
+      "contract_builder",
+      "planner",
+      "executor",
+      "step_verifier",
+      "replanner",
+      "goal_verifier"
+    ]
+  }
+}

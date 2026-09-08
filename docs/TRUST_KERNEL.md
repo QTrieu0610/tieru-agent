@@ -184,8 +184,9 @@ MCP results are secret-redacted and byte-bounded before entering context.
 ## Browser
 
 Browser operations are classified separately as navigation, extraction, click,
-fill, screenshot, and close. Navigation/extraction remain read-oriented; click
-and fill are state-changing and require their configured policy/approval.
+type, scroll, screenshot, back, and close. Open/read/scroll/screenshot/back remain
+read-oriented; click and type require configured policy/approval, and type never
+submits a form.
 Uploads, downloads, arbitrary JavaScript, and silent credential reuse remain
 unavailable.
 
@@ -196,12 +197,25 @@ fixture protections. M7 adds authorization; it does not weaken the sandbox.
 
 ## Filesystem and process safety
 
-Scoped filesystem policy uses resolved paths, but M7 is not an OS sandbox.
-Tool-owned roots, safe filenames, and workspace restrictions still apply inside
-individual tools. Model-accessible process execution is HIGH risk and denied or
-confirmed unless explicitly scoped. Command rules compare a known executable;
-arguments and working directories remain bounded by the tool. Tieru does not
-attempt to make arbitrary shell strings safe.
+Scoped filesystem policy uses resolved paths. M8 filesystem/document tools also
+enforce one immutable current-workspace root internally and reject traversal or
+escaping symlinks. Model-accessible process execution is HIGH risk and denied or
+confirmed unless explicitly scoped. `shell_run` has a workspace cwd, foreground
+lifecycle, timeout and output bounds, and rejects chaining, background, installs,
+and obvious destructive commands. Tieru does not claim an OS-level process sandbox.
+
+M9 repository reads use fixed Git argv and the same workspace root. Code patches are
+`local_write`, require policy approval, reject traversal/escaping symlinks, and only
+replace one exact unique context. GitHub operations are fixed read-only `gh` commands.
+No commit, push, merge, reset, checkout, stage, issue/PR write, or CI mutation capability
+is registered; `shell_run` also rejects Git mutation verbs.
+
+The isolated M10-Lite experiment does not add planning authority: it has no planner or
+planning pseudo-tool, and it is not active in the normal M5-M9 runtime path. Its
+deterministic tests pass, while live `ollama/gemma4:e2b` is blocked because the model
+returns final before requesting a tool—not because of a Trust or permission failure.
+If explicitly invoked, every one-at-a-time action still crosses this Trust boundary
+and Replay; equivalent writes and shell fallbacks cannot bypass a denial.
 
 ## Memory and Memory Graph
 

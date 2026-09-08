@@ -22,6 +22,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from tieru.context import ContextBuilder
 from tieru.graph.engine import END, START, Graph, Node
 from tieru.graph.nodes import key_router
 
@@ -53,10 +54,18 @@ def classify_message(client, small_model: str, message: str) -> tuple[str, str]:
     """Returns (route, reason). Fails open to "full": a broken triage must
     cost latency, never capability — mirror of retrieval_gate.should_retrieve."""
     try:
+        builder = ContextBuilder(max_block_bytes=4096)
+        builder.add_control(
+            TRIAGE_PROMPT.replace("User message: {message}", ""),
+            source="graph_triage",
+        )
+        builder.add_user(message, source="user")
+        assembly = builder.build()
         response = client.messages.create(
             model=small_model,
             max_tokens=600,  # reasoning models think before the JSON
-            messages=[{"role": "user", "content": TRIAGE_PROMPT.format(message=message)}],
+            system=assembly.system,
+            messages=list(assembly.messages),
         )
         text = "".join(b.text for b in response.content if b.type == "text")
         if "{" not in text:

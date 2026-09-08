@@ -22,6 +22,7 @@ import threading
 import time
 
 from tieru.config import load_settings, with_role
+from tieru.context import ContextBuilder
 from tieru.loop.models import ModelRouter
 
 _DEFAULT_JUDGE = load_settings().role("judge")
@@ -88,10 +89,17 @@ def judge_reply(task: str, reply: str, provider: str | None = None,
             api_key_env=target.api_key_env,
         )
     judge_role = settings.role("judge")
-    actions = (f"\nTools the assistant actually ran this turn (ground truth): "
-               f"{', '.join(tools)}.\n" if tools else
-               "\nThe assistant ran no tools this turn.\n")
-    prompt = _RUBRIC.format(task=task[:2000], reply=reply[:4000], actions=actions)
+    actions = (f"Tools the assistant actually ran this turn: {', '.join(tools)}."
+               if tools else "The assistant ran no tools this turn.")
+    builder = ContextBuilder(max_block_bytes=8192, max_data_bytes=16_000)
+    builder.add_control(
+        _RUBRIC.format(task="[TASK DATA]", reply="[REPLY DATA]", actions="[ACTION DATA]"),
+        source="eval_judge",
+    )
+    builder.add_data(task[:2000], source="eval_task")
+    builder.add_data(reply[:4000], source="eval_reply")
+    builder.add_data(actions, source="eval_actions")
+    assembly = builder.build()
     # A race judges every column at once, so the endpoint sees a burst and may
     # 429. Retry ONLY the API call (with growing backoff); the semaphore caps how
     # many run concurrently. A response that arrives but won't parse isn't
@@ -104,7 +112,7 @@ def judge_reply(task: str, reply: str, provider: str | None = None,
             with _judge_semaphore(settings.judge_concurrency):
                 resp = client.messages.create(
                     model=judge_role.model, max_tokens=300,
-                    messages=[{"role": "user", "content": prompt}])
+                    system=assembly.system, messages=list(assembly.messages), tools=[])
             break
         except Exception:
             if attempt < 3:

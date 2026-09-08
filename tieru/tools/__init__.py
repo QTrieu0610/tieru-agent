@@ -5,9 +5,21 @@ Apple ecosystem (TIERU_APPLE_TOOLS=1) and MCP servers (.tieru/mcp.json)."""
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from tieru.config import Settings
-from tieru.tools import calendar, memory_admin, messages, notes, search
+from tieru.execution import ExecutionStore
+from tieru.tools import (
+    calendar,
+    coding,
+    computer,
+    memory_admin,
+    memory_tools,
+    messages,
+    notes,
+    search,
+    weather,
+)
 from tieru.tools.registry import ApprovalHandler, ToolRegistry
 
 
@@ -17,18 +29,22 @@ def build_registry(
     memory=None,
     approval_handler: ApprovalHandler | None = None,
 ) -> ToolRegistry:
+    workspace_root = Path.cwd().resolve()
     registry = ToolRegistry(
         settings.tool_permissions,
         approval_handler,
         trust_policy=settings.trust_policy,
         trust_context={
-            "base_path": str(settings.home.resolve().parent),
+            "base_path": str(workspace_root),
             "path_aliases": {
                 "home": str(settings.home.resolve()),
-                "workspace": str((settings.home / "workspace").resolve()),
+                "workspace": str(workspace_root),
             },
             "browser_domains": list(settings.browser_allowed_domains),
         },
+        execution_store=ExecutionStore(
+            conn, max_result_bytes=settings.replay_max_tool_output_bytes
+        ),
     )
     registry.register(
         calendar.make_tool(
@@ -45,20 +61,34 @@ def build_registry(
     registry.register(calendar.make_list_tool(conn, settings.home))
     registry.register(notes.make_tool(memory.store if memory is not None else conn))
     registry.register(messages.make_tool(settings.home))
-    # Web search — pairs with create_event for the multi-tool loop demo
-    # ("find the World Cup games left and add them to my calendar").
+    # Keep the legacy search tool while adding bounded search + selected-source fetch.
     registry.register(search.make_tool())
+    for tool in search.make_tools():
+        registry.register(tool)
+    registry.register(weather.make_tool())
+    local_computer = computer.LocalComputer(workspace_root)
+    for tool in computer.make_tools(local_computer):
+        registry.register(tool)
+    registry.local_computer = local_computer
+    repository = coding.RepositoryTools(local_computer)
+    github_reader = coding.GitHubReader(workspace_root, settings.gh_repo)
+    for tool in coding.make_tools(repository, github_reader):
+        registry.register(tool)
+    registry.repository = repository
+    registry.github_reader = github_reader
 
     # Memory self-management — the agent can correct/forget memory, learn rules,
     # and author its own skills (feels like a personal agent, not a black box).
     if memory is not None:
+        for tool in memory_tools.make_tools(memory):
+            registry.register(tool)
         registry.register(memory_admin.make_manage_memory_tool(memory))
         registry.register(memory_admin.make_update_soul_tool(settings))
         registry.register(memory_admin.make_create_skill_tool(settings, memory))
 
     # Experimental tools — off by default; opt in with TIERU_EXPERIMENTAL=1.
-    # delegate_task (sub-agents via pi) is live; terminal/browser/cron are
-    # still skeletons that report "coming soon".
+    # delegate_task and governed argv-only run_command are live; the browser
+    # remains a skeleton that reports "coming soon".
     #
     # Trust settings.experimental ALONE. load_settings() already defaults it from
     # TIERU_EXPERIMENTAL, so re-checking the env here would let the global switch
@@ -66,7 +96,14 @@ def build_registry(
     # every non-coding race. Once the dashboard could write TIERU_EXPERIMENTAL=1,
     # that OR silently forced delegate_task into races that never asked for it.
     if getattr(settings, "experimental", False):
-        from tieru.tools import experimental
+        from tieru.tools import command, experimental
+
+        command_policy = command.CommandPolicy(
+            workspace_root,
+            max_stdout_bytes=max(1024, settings.replay_max_tool_output_bytes),
+            max_stderr_bytes=max(1024, settings.replay_max_tool_output_bytes),
+        )
+        registry.register(command.make_tool(command.CommandRunner(command_policy)))
 
         for t in experimental.make_tools(settings):
             registry.register(t)

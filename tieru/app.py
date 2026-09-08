@@ -6,7 +6,10 @@ session → loop. If you want to understand the repo in one place, start here.
 
 from __future__ import annotations
 
+from typing import Any
+
 from tieru.config import Settings, load_settings
+from tieru.context import ContextBlock, ContextBuilder
 from tieru.db import connect
 from tieru.fabric import ModelFabric, ModelSelectionError
 from tieru.fabric.availability import AvailabilityService
@@ -84,6 +87,18 @@ class Tieru:
 
         self.shadow = ShadowService(self.conn, self.settings)
 
+        from tieru.tasks.service import build_task_service
+
+        self.tasks = build_task_service(self)
+        from tieru.capabilities import CapabilityRouter, CapabilityRouterConfig
+
+        cap_config = CapabilityRouterConfig(
+            max_visible_tools=getattr(self.settings, "capability_max_visible_tools", 8),
+            min_score=getattr(self.settings, "capability_min_score", 0.30),
+            top_k=getattr(self.settings, "capability_top_k", 4),
+        )
+        self.capability_router = CapabilityRouter(cap_config)
+
     def close(self) -> None:
         """Release external resources (MCP subprocesses). Called when the
         dashboard rebuilds the agent after a settings change."""
@@ -94,7 +109,13 @@ class Tieru:
             browser.close()
 
     def respond(self, user_message: str, observer: Observer | None = None,
-                source: str = "cli", stream: bool = False) -> LoopResult:
+                source: str = "cli", stream: bool = False,
+                context_blocks: tuple[ContextBlock, ...] = (),
+                routing_query: str | None = None,
+                task_id: str | None = None,
+                task_store: Any = None,
+                role: str | None = None,
+                tool_choice_policy: Any = None) -> LoopResult:
         """One full turn: assemble working memory → run the loop → persist.
         `source` tags which gateway the message arrived through (cli / voice /
         telegram / dashboard), so the unified chat can show its origin.
@@ -106,14 +127,15 @@ class Tieru:
         captured: dict = {}
         run_id = new_run_id()
         recorder = ReplayRecorder(self.replay)
-        main_role = self.model_router.role("main")
+        effective_role = role or ("executor" if source == "task" else "main")
+        active_role = self.model_router.role(effective_role)
         recorder.start(
             run_id=run_id,
             session_id=self.session.session_id,
             source=source,
-            role="main",
-            model=main_role.model,
-            provider=main_role.provider,
+            role=effective_role,
+            model=active_role.model,
+            provider=active_role.provider,
             user_input=user_message,
         )
 
@@ -196,20 +218,40 @@ class Tieru:
                 # flag off → this is exactly the old code path; flag on → the triage
                 # graph decides quick vs full, and any failure anywhere falls open
                 # to the plain loop below (same fail-open rule as the retrieval gate).
+                if task_id is None and context_blocks:
+                    for b in context_blocks:
+                        if getattr(b, "metadata", None) and b.metadata.get("task_id"):
+                            task_id = b.metadata["task_id"]
+                            break
+                if task_id is not None and task_store is None:
+                    task_store = getattr(getattr(self, "tasks", None), "store", None)
                 result = None
                 if self.settings.fabric_enabled:
                     decision, result = self._run_profiled_with_fallback(
-                        user_message, decision, notify, stream
+                        user_message, decision, notify, stream, context_blocks,
+                        routing_query=routing_query,
+                        task_id=task_id,
+                        task_store=task_store,
+                        tool_choice_policy=tool_choice_policy,
                     )
                 elif self.settings.graph_workflows:
                     try:
-                        result = self._respond_via_graph(user_message, notify, stream)
+                        result = self._respond_via_graph(
+                            user_message, notify, stream, context_blocks
+                        )
                     except Exception as exc:
                         notify("graph_end", {"workflow": "triage", "ms": 0, "steps": 0,
                                              "path": [], "error": repr(exc)})
                         result = None
                 if result is None:
-                    result = self._run_full_turn(user_message, notify, stream)
+                    result = self._run_full_turn(
+                        user_message, notify, stream, context_blocks,
+                        routing_query=routing_query,
+                        task_id=task_id,
+                        task_store=task_store,
+                        role=effective_role,
+                        tool_choice_policy=tool_choice_policy,
+                    )
 
                 quick = captured.get("graph_route", {}).get("target") == "quick_reply"
 
@@ -313,52 +355,82 @@ class Tieru:
             )
             raise
 
-    def _run_full_turn(self, user_message: str, notify, stream: bool) -> LoopResult:
+    def _run_full_turn(
+        self, user_message: str, notify, stream: bool,
+        context_blocks: tuple[ContextBlock, ...] = (),
+        routing_query: str | None = None,
+        task_id: str | None = None,
+        task_store: Any = None,
+        role: str = "main",
+        tool_choice_policy: Any = None,
+    ) -> LoopResult:
         """The classic turn: assemble working memory, run THE loop. Extracted
         verbatim so the graph's full_agent node calls the SAME code as the
         flag-off default — loop-as-a-node can never drift from loop-as-default."""
-        system = self.session.build_system(user_message, notify=notify)
         # Working memory is a bounded window: only the last N turns (2 rows
         # each) enter the prompt, so context/cost/latency stay flat no matter
         # how long the conversation runs. Older turns live in state.db and
         # come back via the retrieval gate + episodic memory when relevant.
         window = self.settings.history_turns * 2
-        messages = self.session.history[-window:] + [{"role": "user", "content": user_message}]
+        assembly = self.session.build_context(
+            user_message, notify=notify, history=self.session.history[-window:],
+            extra_blocks=context_blocks,
+        )
+
+        if hasattr(self.model_router, "assignment"):
+            assign = self.model_router.assignment(role)
+            notify("model_role_routed", {
+                "role": role,
+                "provider": assign.primary_provider,
+                "model": assign.primary_model,
+                "selection_source": assign.selection_source,
+                "fallback_used": False,
+            })
 
         return run_loop(
-            client=self.model_router.client("main"),
-            model=self.model_router.model("main"),
-            system=system,
-            messages=messages,
+            client=self.model_router.client(role),
+            model=self.model_router.model(role),
+            system=assembly.system,
+            messages=list(assembly.messages),
             tools=self.tools,
             max_iterations=self.settings.max_iterations,
             max_tokens=self.settings.max_tokens,
             observer=notify,
             stream=stream,
-            provider=self.model_router.provider("main"),
-            role="main",
+            provider=self.model_router.provider(role),
+            role=role,
+            capability_router=self.capability_router,
+            routing_query=routing_query,
+            task_id=task_id,
+            task_store=task_store,
+            tool_choice_policy=tool_choice_policy,
         )
 
-    def _run_profiled_turn(self, user_message, decision, notify, stream) -> LoopResult:
+    def _run_profiled_turn(
+        self, user_message, decision, notify, stream,
+        context_blocks: tuple[ContextBlock, ...] = (),
+        routing_query: str | None = None,
+        task_id: str | None = None,
+        task_store: Any = None,
+        **kwargs: Any,
+    ) -> LoopResult:
         """Run the unchanged loop once with an immutable Fabric profile."""
         profile = decision.profile
         candidate = self._candidate_for(decision)
         selected_client = self.model_router.client_for(candidate, decision.role)
         if self.memory is not None:
             self.memory.set_model(selected_client, decision.model, decision.provider)
-        system = self.session.build_system(
+        window = profile.history_turns * 2
+        assembly = self.session.build_context(
             user_message, notify=notify, memory_enabled=profile.memory_enabled,
             role_model=decision.model, role_provider=decision.provider,
+            history=self.session.history[-window:], extra_blocks=context_blocks,
         )
-        window = profile.history_turns * 2
-        messages = self.session.history[-window:] + [
-            {"role": "user", "content": user_message}
-        ]
         return run_loop(
             client=selected_client,
             model=decision.model,
-            system=system,
-            messages=messages,
+            system=assembly.system,
+            messages=list(assembly.messages),
             tools=self.tools if profile.tools_enabled else self.no_tools,
             max_iterations=profile.max_iterations,
             max_tokens=profile.max_tokens,
@@ -366,6 +438,11 @@ class Tieru:
             stream=stream,
             provider=decision.provider,
             role=decision.role,
+            capability_router=self.capability_router if profile.tools_enabled else None,
+            routing_query=routing_query,
+            task_id=task_id,
+            task_store=task_store,
+            tool_choice_policy=kwargs.get("tool_choice_policy"),
         )
 
     def _candidate_for(self, decision):
@@ -419,7 +496,14 @@ class Tieru:
             "fallback_used": selection.fallback_count > 0,
         })
 
-    def _run_profiled_with_fallback(self, user_message, decision, notify, stream):
+    def _run_profiled_with_fallback(
+        self, user_message, decision, notify, stream,
+        context_blocks: tuple[ContextBlock, ...] = (),
+        routing_query: str | None = None,
+        task_id: str | None = None,
+        task_store: Any = None,
+        tool_choice_policy: Any = None,
+    ):
         while True:
             tool_activity = {"count": 0}
 
@@ -432,9 +516,36 @@ class Tieru:
                 notify(kind, event)
 
             try:
-                return decision, self._run_profiled_turn(
-                    user_message, decision, watched, stream
-                )
+                kwargs: dict[str, Any] = {}
+                if routing_query is not None:
+                    kwargs["routing_query"] = routing_query
+                if task_id is not None:
+                    kwargs["task_id"] = task_id
+                if task_store is not None:
+                    kwargs["task_store"] = task_store
+                if tool_choice_policy is not None:
+                    kwargs["tool_choice_policy"] = tool_choice_policy
+                if context_blocks:
+                    try:
+                        result = self._run_profiled_turn(
+                            user_message, decision, watched, stream, context_blocks,
+                            **kwargs,
+                        )
+                    except TypeError:
+                        result = self._run_profiled_turn(
+                            user_message, decision, watched, stream, context_blocks,
+                        )
+                else:
+                    try:
+                        result = self._run_profiled_turn(
+                            user_message, decision, watched, stream,
+                            **kwargs,
+                        )
+                    except TypeError:
+                        result = self._run_profiled_turn(
+                            user_message, decision, watched, stream,
+                        )
+                return decision, result
             except Exception as exc:
                 reason = fallback_reason(exc)
                 safe_to_restart = not stream and tool_activity["count"] == 0
@@ -467,7 +578,10 @@ class Tieru:
                 })
                 self._notify_selection(decision, notify)
 
-    def _respond_via_graph(self, user_message: str, notify, stream: bool) -> LoopResult | None:
+    def _respond_via_graph(
+        self, user_message: str, notify, stream: bool,
+        context_blocks: tuple[ContextBlock, ...] = (),
+    ) -> LoopResult | None:
         """One turn through the triage graph workflow. Returns None whenever
         the graph didn't produce an answer — respond() then falls open to the
         plain loop, so this path can only ever ADD speed, never lose a reply."""
@@ -482,8 +596,19 @@ class Tieru:
         def quick_reply(state: dict) -> str:
             import time
 
-            prompt = QUICK_REPLY_PROMPT.format(calendar=state.get("calendar", ""),
-                                               message=state["message"])
+            builder = ContextBuilder(max_block_bytes=8192)
+            builder.add_control(
+                QUICK_REPLY_PROMPT.split("Today's calendar:", 1)[0],
+                source="graph_quick_reply",
+            )
+            builder.add_data(state.get("calendar", ""), source="calendar")
+            for block in context_blocks:
+                builder.add(
+                    block.trust, block.content, source=block.source,
+                    metadata=block.metadata,
+                )
+            builder.add_user(state["message"], source="user")
+            assembly = builder.build()
             started = time.perf_counter()
             notify("model_call_started", {"role": "small",
                                           "model": self.model_router.model("small"),
@@ -491,7 +616,7 @@ class Tieru:
                                           "purpose": "quick_reply"})
             response = self.small_client.messages.create(
                 model=self.model_router.model("small"), max_tokens=600,
-                messages=[{"role": "user", "content": prompt}])
+                system=assembly.system, messages=list(assembly.messages))
             usage = getattr(response, "usage", None)
             notify("model_call_completed", {"iteration": 1, "role": "small",
                                             "model": self.model_router.model("small"),
@@ -529,7 +654,7 @@ class Tieru:
             # the full path is the SAME method the flag-off default runs; the
             # engine's tagged notifier stamps its inner events with node=
             full_fn=lambda state: self._run_full_turn(
-                state["message"], state.get("_notify", notify), stream),
+                state["message"], state.get("_notify", notify), stream, context_blocks),
         )
         state = run_graph(graph, {"message": user_message}, observer=notify)
         if isinstance(state.get("result"), LoopResult):

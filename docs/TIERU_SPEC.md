@@ -216,13 +216,105 @@ executed. See `docs/SKILL_FORGE.md` for the detailed M9 contract.
 Playwright is an implemented optional browser-automation capability, not a core dependency.
 
 - It is disabled by default and installed through an extra.
-- It uses an isolated context with no personal profile, cookies, or stored credentials; downloads and uploads are not exposed. Screenshots use safe generated names under the configured Tieru home.
+- It uses an isolated context with no personal profile, cookies, or stored credentials; downloads and uploads are not exposed. Screenshots return bounded metadata without writing a file.
 - Browser navigation, downloads, uploads, credential use, and state-changing clicks are governed by the tool policy.
 - Default posture is read-only navigation to allowed hosts; arbitrary local-file access and silent credential reuse are denied.
 - Tests use local fixtures/pages and do not require the public internet. A live browser smoke test is separately marked and optional.
 - Absence of Playwright or its browser binaries must not break CLI, dashboard, core tools, or test collection.
 
-## 11. Current release completion criteria
+## 11. Local computer tools
+
+Filesystem and document access is limited to the current workspace with resolved-path
+and symlink containment checks. Reads, searches, parser results, command output, and
+runtime are bounded. Writes, directory creation, and foreground process commands use the
+Trust/Permission boundary, Action Ledger, and Replay. M16's opt-in `run_command` accepts
+structured argv only, filters the child environment, rejects shell/privilege wrappers, and
+uses a runtime-owned idempotency scope. It is workspace-confined governed execution, not an
+OS sandbox; child filesystem and network access are not isolated. Delete, move, background
+execution, and package installation remain unavailable.
+
+## 11.1 Human recovery
+
+M17 exposes uncertain Action Ledger records through safe read-only inspection. Explicit human
+decisions are append-only and may reconcile completion, authorize one later retry after confirmed
+non-execution, or abandon the action. Every retry passes through current Trust policy before an
+atomic ledger permit claim. Blocked task recovery never runs tools; reconciled completion must pass
+read-only verification before a step can succeed. This is local human intervention, not automatic
+rollback or distributed recovery.
+
+## 11.2 Scheduled Durable Tasks
+
+M18 stores one-shot and fixed elapsed-interval definitions plus unique logical occurrences in the
+local SQLite state database. A bounded explicit `tieru schedule tick` atomically claims due work,
+materializes one fresh Durable Task per occurrence through a unique source identity, and advances
+it only through the normal task/runtime boundary. Scheduling does not pre-authorize execution:
+current Trust policy, Action Ledger duplicate/uncertain handling, verification, and M17 recovery
+remain authoritative at occurrence time. Missed intervals coalesce to the latest due time without
+cadence drift; overlap is forbidden and recorded. This is local single-database coordination, not
+a daemon, distributed scheduler, or exactly-once guarantee. See `docs/SCHEDULER.md`.
+
+## 12. Coding and Git/GitHub tools
+
+Repository inspection uses specialized bounded code and read-only Git tools. Exact-context
+patches are workspace-scoped writes through Trust/Permission and Replay. Tests may run via
+the governed argv-only command tool (or the legacy restricted foreground tool), after which the
+agent reads the actual Git diff for its final summary. GitHub repository, issue, PR, and CI access
+is read-only. Commit, push, merge,
+reset, checkout, staging, branch mutation, and GitHub writes are outside M9.
+
+## 13. M10-Lite bounded multi-step controller
+
+**Status: BLOCKED BY MODEL CAPABILITY.** M10-Lite's deterministic contracts pass,
+but the live `ollama/gemma4:e2b` smoke returns a final answer before any tool
+execution. The trace contains a successful model turn and no `tool_requested` event;
+this is not a loop, Permission Gate, Trust Kernel, or tool-runtime failure.
+
+M10-Lite is retained as an isolated explicit entry point and is not activated by the
+normal agent or graph path. The runtime default remains the proven M5-M9 direct loop.
+The experiment reuses that tool path without an upfront planner, `plan_task`,
+replanning, or a semantic-plan executor. Each iteration receives the original goal,
+concise verified observations, available tools, and current step count, then may call
+exactly one tool or return final. The public state is limited to goal, observations,
+tool calls, errors, and step count.
+
+The controller requires a bounded step count and global timeout, permits at most two
+tool-failure recovery retries, rejects duplicate normalized calls before execution,
+and stops on repeated no-progress. Dedicated tool routing is enforced before shell
+execution. Permission Gate and Trust Kernel decisions remain unchanged; a denial is
+an observation that permits a safe read-only alternative or a safe stop, never a
+bypass. Final synthesis receives only real successful execution observations.
+
+## 14. M19 Context Firewall
+
+Tieru uses the production-owned `CONTROL > REVIEWED > USER > DATA` authority model at model-call
+boundaries. CONTROL and deliberately REVIEWED guidance are the only privileged system content.
+The current explicit request is USER; retrieved memory/graph records, tool/web/command/MCP output,
+model-generated plans and steps, task results, recovery evidence, and schedule history are bounded,
+escaped DATA with provenance. Provider adapters preserve the same semantics. Deterministic Trust
+authorization remains outside model judgment; this separation is hardening, not a claim that prompt
+injection is solved. See `docs/CONTEXT_FIREWALL.md`.
+
+## 15. M20 Hybrid Skill Retrieval
+
+Procedural skills use deterministic canonical and alias matching, weighted BM25-like lexical
+retrieval, and optional validated cosine scoring through the explicitly configured embedding
+backend. Explained hybrid results are thresholded and limited to two by default/four maximum.
+Unchanged metadata vectors are cached by stable skill ID, SHA-256 content hash, and model; failures
+fall back to offline lexical selection. Retrieval relevance never changes M19 REVIEWED/DATA
+authority or M7 Trust authorization. No chat-model router or vector database participates. See
+`docs/SKILL_RETRIEVAL.md`.
+
+## 16. M21 Agent Reliability Evaluation & Scorecard
+
+Tieru runs versioned, bounded evaluation cases in isolated workspaces and SQLite state. The
+deterministic mode drives the existing Durable Task, Trust, Tool Registry, Action Ledger, Replay,
+verification, and skill-retrieval boundaries with scripted model responses and controlled tools.
+Structured evidence—not final-answer self-report—feeds deterministic expectation checks, optional
+tool-free judge scoring, category metrics, failure taxonomy, JSON scorecards, versioned baselines,
+and centralized regression gates. Trust violations, duplicate unsafe writes, and prompt-injection
+escapes are hard failures regardless of completion performance. See `docs/RELIABILITY_EVAL.md`.
+
+## 17. Current release completion criteria
 
 The current shipped foundation is release-ready when all of the following are
 true; this does not imply completion of the M13 roadmap:
@@ -250,6 +342,9 @@ true; this does not imply completion of the M13 roadmap:
 - Model Fabric candidate registry, lazy availability, explicit privacy routing,
   conservative capability filters, deterministic scoring, minimum-sample
   history, explainable selection, and bounded side-effect-safe fallback are tested.
+- Scheduled occurrence identity, concurrency, crash-safe task materialization, current Trust
+  checks, Action Ledger reuse, recovery linkage, no-overlap/misfire behavior, restart, Replay
+  privacy, and bounded foreground ticks are tested.
 - Deterministic tests and lint pass in the supported environment; live/API tests are clearly marked and their executed/skipped status is reported.
 - Documentation, examples, migration notes, security notes, and evals match shipped behavior.
 - A final diff review shows no secrets, generated runtime data, accidental dependency growth, or removed attribution.

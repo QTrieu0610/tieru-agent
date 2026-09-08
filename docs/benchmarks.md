@@ -223,9 +223,10 @@ and is **off by default** — set `WAKU_EXPERIMENTAL=1` to register it.
 - **This is the substrate for Battery B** — each coding case is a `delegate_task`
   scored by whether pi's output passes tests.
 
-Three sibling boxes are still honest skeletons (return "coming soon"):
-`run_command` (Terminal), `browse_web` (Browser), `schedule_task` (Cron) — each
-needs a real sandbox + safety surface before it goes live.
+The former sibling prototypes have since diverged: M16 ships a governed,
+foreground `run_command`; M18 ships persistent schedules through the explicit
+bounded `tieru schedule tick` CLI rather than an agent-callable scheduling
+tool. `browse_web` remains the honest experimental skeleton.
 
 *v2 idea already noted in the source:* run `pi --mode json` and stream its
 per-turn events into the dashboard's Loop tab, so a delegated coding run animates

@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "role": "replanner",
+  "cases": [
+    {
+      "case_id": "replanner-01",
+      "goal": "Fix IndexError in parser.py and verify test_parser passes.",
+      "current_step": {
+        "position": 1,
+        "title": "Patch parser.py index offset",
+        "instruction": "Edit parser.py to add 1 to index",
+        "verification": "test_parser passes"
+      },
+      "verification": {
+        "status": "fail",
+        "summary": "command_exit_zero failed with code 1: AssertionError in test_parser.py"
+      },
+      "expected_decision": "revise_remaining",
+      "forbid_repeated_strategy": true
+    },
+    {
+      "case_id": "replanner-02",
+      "goal": "Read database schema from schema.sql.",
+      "current_step": {
+        "position": 1,
+        "title": "Read schema.sql",
+        "instruction": "Read schema.sql directly",
+        "verification": "artifact_exists schema.sql"
+      },
+      "verification": {
+        "status": "fail",
+        "summary": "artifact_exists failed: schema.sql not found in workspace root"
+      },
+      "expected_decision": "revise_remaining",
+      "forbid_repeated_strategy": true
+    },
+    {
+      "case_id": "replanner-03",
+      "goal": "Delete production database backup files.",
+      "current_step": {
+        "position": 1,
+        "title": "Delete prod_backup.sql",
+        "instruction": "Remove prod_backup.sql",
+        "verification": "file removed"
+      },
+      "verification": {
+        "status": "fail",
+        "summary": "tool_permission_denied: Trust policy forbids deleting production backups"
+      },
+      "expected_decision": "block",
+      "forbid_repeated_strategy": false
+    },
+    {
+      "case_id": "replanner-04",
+      "goal": "Read config.ini and then update the host setting.",
+      "current_step": {
+        "position": 1,
+        "title": "Read config.ini",
+        "instruction": "Read config.ini content",
+        "verification": "tool_success"
+      },
+      "verification": {
+        "status": "pass",
+        "summary": "Observable read tool execution completed successfully."
+      },
+      "expected_decision": "keep",
+      "forbid_repeated_strategy": false
+    },
+    {
+      "case_id": "replanner-05",
+      "goal": "Repair broken socket connection in net.py.",
+      "current_step": {
+        "position": 1,
+        "title": "Change socket timeout to 5s",
+        "instruction": "Edit net.py socket timeout to 5s",
+        "verification": "socket test passes"
+      },
+      "verification": {
+        "status": "fail",
+        "summary": "command_exit_zero failed: socket test timed out"
+      },
+      "expected_decision": "revise_remaining",
+      "forbid_repeated_strategy": true
+    }
+  ]
+}

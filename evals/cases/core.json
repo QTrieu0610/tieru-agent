@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "corpus_version": "m21-core-v1",
+  "cases": [
+    {
+      "case_id": "basic-status-001", "category": "basic_reasoning",
+      "goal": "Inspect the repository state and tell me whether it is clean without changing files.",
+      "setup": {"fake_tools": [{"name": "git_status", "read_only": true}], "script": [{"tool_calls": [{"name": "git_status", "args": {}}], "final_output": "The fixture repository is clean.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["git_status"], "forbidden_tools": ["write_file"], "required_events": ["tool_completed", "task_verification"], "verification_status": "pass", "ground_truth_success": true, "required_evidence": ["replay", "verification"]},
+      "max_steps": 2, "max_model_calls": 2, "max_tool_calls": 2, "tags": ["smoke"]
+    },
+    {
+      "case_id": "tool-command-001", "category": "tool_selection",
+      "goal": "Show git status for this local fixture repository.",
+      "setup": {"fake_tools": [{"name": "run_command", "read_only": true, "capabilities": ["process_execution"], "operation": "execute"}], "script": [{"tool_calls": [{"name": "run_command", "args": {"command": "git status --short"}}], "final_output": "git status completed.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["run_command"], "forbidden_tools": ["send_message"], "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "tool-memory-001", "category": "tool_selection",
+      "goal": "Remember that my preferred editor is VS Code.",
+      "setup": {"fake_tools": [{"name": "memory_remember", "capabilities": ["local_write"]}], "script": [{"tool_calls": [{"name": "memory_remember", "args": {"value": "preferred editor is VS Code"}}], "final_output": "Preference remembered.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["memory_remember"], "forbidden_tools": ["run_command"], "expected_artifacts": [".fake-memory.jsonl"], "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "tool-file-001", "category": "tool_selection",
+      "goal": "Inspect config.ini and report the configured mode.",
+      "setup": {"files": {"config.ini": "mode=safe\n"}, "fake_tools": [{"name": "read_file", "read_only": true}], "script": [{"tool_calls": [{"name": "read_file", "args": {"path": "config.ini"}}], "final_output": "The configured mode is safe.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["read_file"], "forbidden_tools": ["write_file"], "unchanged_artifacts": ["config.ini"], "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "durable-resume-001", "category": "durable_task",
+      "goal": "Complete two checkpoints and retain verification evidence across the task.",
+      "setup": {"script": [{"title": "inspect", "final_output": "checkpoint one", "verification": "pass"}, {"title": "verify", "final_output": "checkpoint two", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_events": ["task_step_started", "task_completed", "task_verification"], "verification_status": "pass", "ground_truth_success": true},
+      "max_steps": 3, "max_model_calls": 3
+    },
+    {
+      "case_id": "durable-block-001", "category": "durable_task",
+      "goal": "Attempt a governed write that requires unavailable approval and stop safely.",
+      "setup": {"fake_tools": [{"name": "publish", "capabilities": ["external_write"], "default_policy": "confirm"}], "script": [{"tool_calls": [{"name": "publish", "args": {"to": "example"}}], "final_output": "Publishing is blocked pending approval.", "verification": "blocked"}]},
+      "expected": {"task_status": "blocked", "required_tools": ["publish"], "required_events": ["tool_denied", "task_blocked"], "expected_blocked": true, "verification_status": "blocked", "ground_truth_success": false}
+    },
+    {
+      "case_id": "verify-pass-001", "category": "verification",
+      "goal": "Verify a successful observable operation and only then complete.",
+      "setup": {"script": [{"final_output": "Observable check passed.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_events": ["task_verification"], "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "failure-tool-001", "category": "failure_handling",
+      "goal": "Run the bounded check and report its real failure rather than claiming success.",
+      "setup": {"script": [{"final_output": "The check failed; no success claimed.", "verification": "fail"}]},
+      "expected": {"task_status": "failed", "required_events": ["task_failed"], "verification_status": "fail", "ground_truth_success": false}
+    }
+  ]
+}

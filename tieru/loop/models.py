@@ -174,3 +174,60 @@ class ModelRouter:
         if key not in self._target_clients:
             self._target_clients[key] = get_client_for_target(self.settings, target, role)
         return self._target_clients[key]
+
+    def assignment(self, name: str):
+        from tieru.fabric.roles import resolve_effective_role_assignment
+        return resolve_effective_role_assignment(name, self.settings)
+
+    def record_routed_call(
+        self,
+        role: str,
+        *,
+        fallback_used: bool = False,
+        error: str = "",
+        expected_model: str | None = None,
+        observer: Any = None,
+        tracer: Any = None,
+        replay: Any = None,
+    ) -> dict[str, Any]:
+        assign = self.assignment(role)
+        active_provider = (
+            assign.fallback_provider
+            if fallback_used and assign.fallback_provider
+            else assign.primary_provider
+        )
+        active_model = (
+            assign.fallback_model
+            if fallback_used and assign.fallback_model
+            else assign.primary_model
+        )
+        source = "fallback" if fallback_used else assign.selection_source
+        event = {
+            "role": role,
+            "provider": active_provider,
+            "model": active_model,
+            "selection_source": source,
+            "fallback_used": fallback_used,
+        }
+        if expected_model:
+            event["expected_model"] = expected_model
+        if error:
+            event["routing_error"] = error
+        if not hasattr(self, "routing_history"):
+            self.routing_history = []
+        self.routing_history.append(event)
+        if observer is not None:
+            observer("model_role_routed", event)
+        if tracer is not None and hasattr(tracer, "event"):
+            tracer.event("model_role_routed", event)
+        if replay is not None and hasattr(replay, "record_event"):
+            try:
+                replay.record_event("", "model_role_routed", event)
+            except Exception:
+                pass
+        return event
+
+    def routing_metrics(self) -> dict[str, float]:
+        from tieru.fabric.roles import compute_routing_metrics
+        history = getattr(self, "routing_history", [])
+        return compute_routing_metrics(history)

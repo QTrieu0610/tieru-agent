@@ -7,6 +7,8 @@ and the honest strings for every failure mode (not installed / timeout / bad cwd
 
 from __future__ import annotations
 
+import io
+import json
 import subprocess
 from types import SimpleNamespace
 
@@ -72,18 +74,26 @@ def test_delegate_task_invokes_pi_print_mode(tmp_path, monkeypatch):
 
 def test_delegate_runs_pi_on_the_calling_model(tmp_path, monkeypatch):
     """The sub-agent codes with the loop's OWN brain — delegate_task passes this
-    model's provider/model/key to pi, so a per-model race actually compares
-    models (kimi's pi uses kimi, opus's pi uses opus)."""
+    model's provider/model to pi while its key stays in the child environment."""
     record = {}
+    secret = "super-secret-value"
     monkeypatch.setattr(experimental.shutil, "which", lambda _: "/fake/bin/pi")
     monkeypatch.setattr(experimental.subprocess, "run", fake_run(record))
-    monkeypatch.setenv("MOONSHOT_API_KEY", "k")
+    monkeypatch.setenv("MOONSHOT_API_KEY", secret)
     tool = experimental.make_delegate_tool(Settings(home=tmp_path, provider="kimi", model="kimi-k3"))
-    tool.fn(task="write fizzbuzz")
+    tool.fn(task="write fizzbuzz", cwd=str(tmp_path))
     argv = record["argv"]
     assert "--provider" in argv and "moonshotai" in argv    # kimi -> pi's moonshotai
     assert "--model" in argv and "kimi-k3" in argv
-    assert "--api-key" in argv
+    assert "--api-key" not in argv
+    assert secret not in argv
+    assert record["kwargs"]["env"]["MOONSHOT_API_KEY"] == secret
+
+    transcript_path = next((tmp_path / "outbox").glob("delegate-*.log"))
+    transcript = transcript_path.read_text(encoding="utf-8")
+    assert secret not in transcript
+    assert "moonshotai" in transcript and "kimi-k3" in transcript
+    assert "write fizzbuzz" in transcript and f"cwd: {tmp_path}" in transcript
 
 
 def test_delegate_without_pi_returns_install_hint(tmp_path, monkeypatch):
@@ -113,16 +123,94 @@ def test_delegate_rejects_missing_cwd_and_empty_task(tmp_path, monkeypatch):
     assert "needs a 'task'" in tool.fn()   # empty model call → recovery text, no raise
 
 
-def test_delegate_failure_surfaces_stderr(tmp_path, monkeypatch):
+def test_delegate_failure_redacts_stderr_and_transcript(tmp_path, monkeypatch):
+    secret = "super-secret-value"
     monkeypatch.setattr(experimental.shutil, "which", lambda _: "/fake/bin/pi")
+    monkeypatch.setenv("MOONSHOT_API_KEY", secret)
 
     def run(argv, **kwargs):
-        return SimpleNamespace(stdout="", stderr="No API key found", returncode=1)
+        return SimpleNamespace(
+            stdout="", stderr=f"authentication failed for {secret}", returncode=1
+        )
 
     monkeypatch.setattr(experimental.subprocess, "run", run)
-    tool = experimental.make_delegate_tool(Settings(home=tmp_path))
+    tool = experimental.make_delegate_tool(
+        Settings(home=tmp_path, provider="kimi", model="kimi-k3")
+    )
     out = tool.fn(task="anything")
-    assert "pi hit an error" in out and "No API key found" in out
+    assert "pi hit an error" in out and "authentication failed" in out
+    assert secret not in out
+    transcript = next((tmp_path / "ws").rglob("pi-transcript.log")).read_text(
+        encoding="utf-8"
+    )
+    assert secret not in transcript
+    assert "[REDACTED SECRET]" in transcript
+
+
+def test_delegate_streaming_keeps_secret_out_of_argv_events_and_logs(tmp_path, monkeypatch):
+    secret = "super-secret-value"
+    record = {}
+    monkeypatch.setenv("MOONSHOT_API_KEY", secret)
+    monkeypatch.setattr(experimental.shutil, "which", lambda _: "/fake/bin/pi")
+    monkeypatch.setattr(experimental, "_PI_JSON_MODE", True)
+
+    events = [
+        {
+            "type": "message_update",
+            "assistantMessageEvent": {
+                "type": "text_delta",
+                "delta": f"authentication failed for {secret}",
+            },
+        },
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": f"could not use {secret}"},
+                ],
+            },
+        },
+        {"type": "turn_end"},
+    ]
+
+    class FakePopen:
+        def __init__(self, argv, **kwargs):
+            record["argv"] = argv
+            record["kwargs"] = kwargs
+            self.stdout = io.StringIO("".join(json.dumps(event) + "\n" for event in events))
+            self.stderr = io.StringIO(f"stderr also contained {secret}")
+
+        def wait(self):
+            return 0
+
+        def kill(self):
+            return None
+
+    monkeypatch.setattr(experimental.subprocess, "Popen", FakePopen)
+    tool = experimental.make_delegate_tool(
+        Settings(home=tmp_path / "home", provider="kimi", model="kimi-k3")
+    )
+    seen = []
+    out = tool.fn(task="create hello.py", _notify=lambda kind, event: seen.append((kind, event)))
+
+    assert "--provider" in record["argv"] and "moonshotai" in record["argv"]
+    assert "--model" in record["argv"] and "kimi-k3" in record["argv"]
+    assert "--api-key" not in record["argv"] and secret not in record["argv"]
+    assert record["kwargs"]["env"]["MOONSHOT_API_KEY"] == secret
+    assert secret not in out
+    assert secret not in json.dumps(seen)
+
+    transcript = next((tmp_path / "ws").rglob("pi-transcript.log")).read_text(
+        encoding="utf-8"
+    )
+    raw_events = next((tmp_path / "ws").rglob("pi-transcript-events.jsonl")).read_text(
+        encoding="utf-8"
+    )
+    assert secret not in transcript
+    assert secret not in raw_events
+    assert "moonshotai" in transcript and "kimi-k3" in transcript
+    assert "create hello.py" in transcript
 
 
 FAKE_PI = '''#!/usr/bin/env python3
@@ -211,4 +299,4 @@ def test_experimental_flag_gates_registration(tmp_path, monkeypatch):
     monkeypatch.setenv("WAKU_EXPERIMENTAL", "1")
     app_on = make_waku(tmp_path / "on", client=ScriptedClient([]))
     assert "delegate_task" in app_on.tools._tools
-    assert "run_command" in app_on.tools._tools   # skeletons still registered
+    assert "run_command" in app_on.tools._tools   # real governed runner, still opt-in

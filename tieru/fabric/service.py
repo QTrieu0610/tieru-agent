@@ -6,6 +6,7 @@ import json
 from dataclasses import replace
 from typing import Any
 
+from tieru.context import ContextBuilder
 from tieru.fabric.analyze import TaskAnalyzer
 from tieru.fabric.availability import AvailabilityService
 from tieru.fabric.candidates import CandidateRegistry
@@ -188,9 +189,16 @@ class ModelFabric:
         if self.classifier is not None:
             raw: Any = self.classifier(message)
         else:
+            builder = ContextBuilder(max_block_bytes=4096)
+            builder.add_control(
+                _CLASSIFIER_PROMPT.replace("Message: {message}", ""),
+                source="fabric_classifier",
+            )
+            builder.add_user(message, source="user")
+            assembly = builder.build()
             response = self.model_router.client("small").messages.create(
                 model=self.model_router.model("small"), max_tokens=160,
-                messages=[{"role": "user", "content": _CLASSIFIER_PROMPT.format(message=message)}],
+                system=assembly.system, messages=list(assembly.messages),
             )
             raw = "".join(block.text for block in response.content if block.type == "text")
         if isinstance(raw, TaskProfile):

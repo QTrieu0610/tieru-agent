@@ -94,7 +94,21 @@ class ReplayNormalizer:
                 payload.pop(key, None)
         if category == "trust":
             payload.pop("args", None)
-        if category == "tool" and "output" in payload:
+        if category in {"task", "scheduler"}:
+            for key in (
+                "goal", "instruction", "verification_instruction", "result",
+                "context", "messages", "prompt",
+            ):
+                payload.pop(key, None)
+        memory_tool = common["tool"] in {
+            "memory_search", "memory_remember", "memory_update", "memory_forget"
+        }
+        if category == "tool" and memory_tool:
+            omitted = payload.pop("output", None) is not None
+            omitted = payload.pop("output_preview", None) is not None or omitted
+            if omitted:
+                payload["content_omitted"] = True
+        elif category == "tool" and "output" in payload:
             preview, size, truncated = bounded_text(
                 payload.pop("output"), self.max_tool_output_bytes
             )
@@ -140,6 +154,10 @@ class ReplayNormalizer:
             return "model", kind
         if kind in {"route", "triage"}:
             return "routing", "graph_route"
+        if kind == "capability_routed":
+            return "routing", "capability_routed"
+        if kind == "model_role_routed":
+            return "routing", "model_role_routed"
         if kind in {
             "fabric_analysis", "fabric_route", "fabric_candidates", "fabric_filter",
             "fabric_score", "fabric_selection", "fabric_fallback", "fabric_verification"
@@ -153,12 +171,30 @@ class ReplayNormalizer:
             return "graph", kind
         if kind.startswith("trust_"):
             return "trust", kind
+        if kind.startswith(("task_", "goal_", "step_", "evidence_correction_", "execution_checkpoint_")):
+            return "task", kind
+        if kind.startswith("schedule_"):
+            return "scheduler", kind
+        if kind == "context_assembled":
+            return "context", kind
+        if kind.startswith("recovery_") or kind in {
+            "execution_reconciled",
+            "manual_retry_authorized",
+            "manual_retry_consumed",
+        }:
+            return "recovery", kind
         if kind in {
             "tool_requested",
             "tool_started",
             "tool_completed",
             "tool_failed",
             "tool_denied",
+            "tool_execution_claimed",
+            "tool_idempotency_hit",
+            "tool_execution_in_progress",
+            "tool_execution_completed",
+            "tool_execution_failed",
+            "tool_execution_uncertain",
         }:
             return "tool", kind
         if kind == "tool":

@@ -38,6 +38,15 @@ class SupabaseFactStore:
     def _embed(self, text: str) -> list[float]:
         return self.openai.embeddings.create(model=self.embed_model, input=[text]).data[0].embedding
 
+    @property
+    def model(self) -> str:
+        """Configured embedding identity used by the shared skill-vector cache."""
+        return self.embed_model
+
+    def embed(self, text: str) -> list[float]:
+        """Production embedding boundary; callers remain provider-SDK agnostic."""
+        return self._embed(text)
+
     def add(self, subject: str, content: str, source: str = "user") -> None:
         # launch-rag column mapping: source=subject, text=the fact
         self.supabase.table("rag_chunks").upsert(

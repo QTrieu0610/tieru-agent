@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from tieru.tools.memory_tools import memory_intent_check
 from tieru.tools.registry import Tool
 
 
@@ -35,9 +36,8 @@ def make_tool(store: sqlite3.Connection | object) -> Tool:
     return Tool(
         name="save_note",
         description=(
-            "Save a durable fact to long-term memory. Use when the user tells you something "
-            "worth remembering about themselves, a person, or a project — especially if they "
-            "say 'remember' or share a preference."
+            "Legacy compatibility alias for memory_remember. Save a durable fact only when "
+            "the user explicitly asks to remember/save/store it; never save a normal statement."
         ),
         input_schema={
             "type": "object",
@@ -55,4 +55,6 @@ def make_tool(store: sqlite3.Connection | object) -> Tool:
         operation="save",
         target_arg="subject",
         resource_type="memory",
+        sensitive_args=("subject", "content"),
+        intent_check=memory_intent_check("remember"),
     )

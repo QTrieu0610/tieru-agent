@@ -36,16 +36,38 @@ class AnthropicMessagesAdapter:
         self._client = anthropic.Anthropic(**kwargs)
         self.messages = SimpleNamespace(create=self._create, stream=self._stream)
 
+    @property
+    def supports_required_tool_choice(self) -> bool:
+        return True
+
+    @property
+    def supports_tool_calling(self) -> bool:
+        return True
+
     def _create(self, **kwargs):
         try:
             return self._client.messages.create(**kwargs)
         except Exception as exc:
+            if "tool_choice" in kwargs:
+                fallback = dict(kwargs)
+                fallback.pop("tool_choice", None)
+                try:
+                    return self._client.messages.create(**fallback)
+                except Exception:
+                    pass
             raise _model_error(self.protocol, exc, (self._secret,)) from exc
 
     def _stream(self, **kwargs):
         try:
             return self._client.messages.stream(**kwargs)
         except Exception as exc:
+            if "tool_choice" in kwargs:
+                fallback = dict(kwargs)
+                fallback.pop("tool_choice", None)
+                try:
+                    return self._client.messages.stream(**fallback)
+                except Exception:
+                    pass
             raise _model_error(self.protocol, exc, (self._secret,)) from exc
 
 
@@ -61,7 +83,15 @@ class OpenAIChatAdapter:
         self._client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
         self.messages = SimpleNamespace(create=self._create, stream=self._stream)
 
-    def _to_openai(self, *, model, messages, max_tokens, system=None, tools=None) -> dict:
+    @property
+    def supports_required_tool_choice(self) -> bool:
+        return True
+
+    @property
+    def supports_tool_calling(self) -> bool:
+        return True
+
+    def _to_openai(self, *, model, messages, max_tokens, system=None, tools=None, tool_choice=None) -> dict:
         openai_messages = []
         if system:
             openai_messages.append({"role": "system", "content": system})
@@ -88,7 +118,9 @@ class OpenAIChatAdapter:
                     if getattr(block, "extra", None):
                         call["extra_content"] = block.extra
                     calls.append(call)
-                entry: dict = {"role": "assistant", "content": text or None}
+                # Ollama's OpenAI-compatible endpoint rejects null assistant content
+                # on multi-turn tool calls; an empty string preserves the same meaning.
+                entry: dict = {"role": "assistant", "content": text or ""}
                 if calls:
                     entry["tool_calls"] = calls
                 openai_messages.append(entry)
@@ -117,6 +149,8 @@ class OpenAIChatAdapter:
                 }
                 for tool in tools
             ]
+            if tool_choice:
+                kwargs["tool_choice"] = tool_choice
         return kwargs
 
     def _call(self, kwargs: dict, **extra):
@@ -124,6 +158,13 @@ class OpenAIChatAdapter:
             return self._client.chat.completions.create(**kwargs, **extra)
         except Exception as exc:
             message = str(exc).lower()
+            if "tool_choice" in kwargs and ("tool_choice" in message or "unexpected" in message or "unknown" in message or "not supported" in message):
+                fallback_no_tc = dict(kwargs)
+                fallback_no_tc.pop("tool_choice", None)
+                try:
+                    return self._client.chat.completions.create(**fallback_no_tc, **extra)
+                except Exception:
+                    pass
             if "max_completion_tokens" not in message and "max_tokens" not in message:
                 raise _model_error(self.protocol, exc, (self._secret,)) from exc
             fallback = dict(kwargs)
@@ -131,16 +172,24 @@ class OpenAIChatAdapter:
             try:
                 return self._client.chat.completions.create(**fallback, **extra)
             except Exception as retry_exc:
+                if "tool_choice" in fallback:
+                    fallback_clean = dict(fallback)
+                    fallback_clean.pop("tool_choice", None)
+                    try:
+                        return self._client.chat.completions.create(**fallback_clean, **extra)
+                    except Exception:
+                        pass
                 raise _model_error(self.protocol, retry_exc, (self._secret,)) from retry_exc
 
-    def _create(self, *, model, messages, max_tokens, system=None, tools=None):
+    def _create(self, *, model, messages, max_tokens, system=None, tools=None, tool_choice=None, **extra):
         response = self._call(self._to_openai(
             model=model,
             messages=messages,
             max_tokens=max_tokens,
             system=system,
             tools=tools,
-        ))
+            tool_choice=tool_choice,
+        ), **extra)
         if not getattr(response, "choices", None):
             error = getattr(response, "error", None) or "endpoint returned no choices"
             raise ModelError(f"{model}: {error}")
@@ -172,13 +221,14 @@ class OpenAIChatAdapter:
             content=blocks,
         )
 
-    def _stream(self, *, model, messages, max_tokens, system=None, tools=None):
+    def _stream(self, *, model, messages, max_tokens, system=None, tools=None, tool_choice=None, **extra):
         kwargs = self._to_openai(
             model=model,
             messages=messages,
             max_tokens=max_tokens,
             system=system,
             tools=tools,
+            tool_choice=tool_choice,
         )
         return _OpenAIStream(self, kwargs)
 
@@ -227,12 +277,14 @@ class _OpenAIStream:
         text = "".join(self._text)
         if text:
             blocks.append(SimpleNamespace(type="text", text=text))
-        for slot in self._tools.values():
+        for slot in sorted(self._tools.values(), key=lambda item: item.get("index", 0)):
+            if not slot["name"]:
+                continue
             try:
                 arguments = json.loads(slot["args"] or "{}")
             except json.JSONDecodeError as exc:
                 raise ModelError(
-                    f"Model returned invalid streamed JSON for tool '{slot['name']}'"
+                    f"Model returned invalid JSON arguments for tool '{slot['name']}'"
                 ) from exc
             blocks.append(SimpleNamespace(
                 type="tool_use",

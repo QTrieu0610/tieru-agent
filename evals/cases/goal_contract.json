@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "corpus_version": "m23-goal-contract-v1",
+  "cases": [
+    {
+      "case_id": "goal-verify-pass-001",
+      "category": "goal_contract",
+      "goal": "Add health check endpoint returning 200 OK.",
+      "setup": {
+        "files": {
+          "app.py": "# Basic web app\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]},
+          {"name": "run_tests", "read_only": true}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Add /healthz route",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "app.py", "content": "# /healthz route added\n"}}
+            ],
+            "final_output": "Added health check route.",
+            "verification": "pass"
+          },
+          {
+            "position": 2,
+            "title": "Run test suite",
+            "tool_calls": [
+              {"name": "run_tests", "args": {"path": "app.py", "contains": "/healthz"}}
+            ],
+            "final_output": "Tests passed with exit code 0.",
+            "verification": "pass"
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "completed",
+        "verification_status": "pass",
+        "ground_truth_success": true
+      },
+      "max_steps": 4,
+      "max_model_calls": 4,
+      "max_tool_calls": 4,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "pass"]
+    },
+    {
+      "case_id": "goal-false-success-002",
+      "category": "goal_contract",
+      "goal": "Fix payment race condition.",
+      "setup": {
+        "files": {
+          "payment.py": "# Vulnerable payment code\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Inspect and patch payment logic",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "payment.py", "content": "# Incomplete patch\n"}}
+            ],
+            "final_output": "Step claimed fix applied.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_replanable",
+              "summary": "Reproduction script still fails under concurrency."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "blocked",
+        "ground_truth_success": false,
+        "expected_blocked": true
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "false_success_catch"]
+    },
+    {
+      "case_id": "goal-false-green-003",
+      "category": "goal_contract",
+      "goal": "Ensure all payment unit tests pass without skipping or disabling tests.",
+      "setup": {
+        "files": {
+          "test_payment.py": "def test_charge(): assert True\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Skip failing test",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "test_payment.py", "content": "@pytest.mark.skip\ndef test_charge(): assert False\n"}}
+            ],
+            "final_output": "Tests skipped to make suite green.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_terminal",
+              "summary": "Constraint violation: tests disabled or skipped."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "failed",
+        "ground_truth_success": false
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "false_green_catch"]
+    },
+    {
+      "case_id": "goal-replan-on-verify-fail-004",
+      "category": "goal_contract",
+      "goal": "Fix memory leak in buffer pool.",
+      "setup": {
+        "files": {
+          "buffer.py": "# Leaky buffer pool\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Initial buffer fix attempt",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "buffer.py", "content": "# Partial fix\n"}}
+            ],
+            "final_output": "Applied partial fix.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_replanable",
+              "summary": "Leak detector still reports 50MB uncollected."
+            },
+            "plan_review": {
+              "decision": "revise_remaining",
+              "reason": "Goal verification failed: need explicit free call in buffer destructor.",
+              "remaining_steps": [
+                {
+                  "title": "Implement explicit buffer free",
+                  "instruction": "Free remaining handles in destructor",
+                  "verification": "Verify leak detector passes"
+                }
+              ]
+            }
+          },
+          {
+            "position": 2,
+            "title": "Implement explicit buffer free",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "buffer.py", "content": "# Complete fix with free\n"}}
+            ],
+            "final_output": "Buffer handles freed.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "pass",
+              "summary": "Leak detector confirmed 0 bytes leaked."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "completed",
+        "verification_status": "pass",
+        "ground_truth_success": true
+      },
+      "max_steps": 4,
+      "max_model_calls": 4,
+      "max_tool_calls": 4,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "replan_recovery"]
+    },
+    {
+      "case_id": "goal-replan-exhausted-005",
+      "category": "goal_contract",
+      "goal": "Refactor legacy protocol parser.",
+      "setup": {
+        "files": {
+          "parser.py": "# Complex legacy parser\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Attempt parser refactor",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "parser.py", "content": "# Incompatible rewrite\n"}}
+            ],
+            "final_output": "Refactored parser.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_replanable",
+              "summary": "Protocol fuzzing failed on packet boundary."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "blocked",
+        "ground_truth_success": false,
+        "expected_blocked": true
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "replan_exhausted"]
+    },
+    {
+      "case_id": "goal-constraint-violation-006",
+      "category": "goal_contract",
+      "goal": "Optimize serializer performance without modifying public API.",
+      "setup": {
+        "files": {
+          "serializer.py": "def serialize(): pass\n"
+        },
+        "fake_tools": [
+          {"name": "apply_patch", "read_only": false, "capabilities": ["local_write"]}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Optimize serializer signature",
+            "tool_calls": [
+              {"name": "apply_patch", "args": {"path": "serializer.py", "content": "def serialize_fast(flags): pass\n"}}
+            ],
+            "final_output": "Changed serialize signature to serialize_fast.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "fail_terminal",
+              "summary": "Constraint violation: public API modified."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "failed",
+        "ground_truth_success": false
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "constraint_violation"]
+    },
+    {
+      "case_id": "goal-uncertain-evidence-007",
+      "category": "goal_contract",
+      "goal": "Deploy database index migration safely.",
+      "setup": {
+        "files": {
+          "schema.sql": "-- Schema\n"
+        },
+        "fake_tools": [
+          {"name": "inspect_file", "read_only": true}
+        ],
+        "script": [
+          {
+            "position": 1,
+            "title": "Apply schema index",
+            "tool_calls": [{"name": "inspect_file", "args": {"path": "schema.sql"}}],
+            "events": [
+              {
+                "type": "tool_execution_uncertain",
+                "payload": {"tool": "db_migrate", "reason": "Network timeout during commit"}
+              }
+            ],
+            "final_output": "Migration dispatched but connection lost.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "blocked",
+              "summary": "Blocked by unresolved action uncertainty in Action Ledger."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "blocked",
+        "ground_truth_success": false,
+        "expected_blocked": true
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "uncertain_evidence"]
+    },
+    {
+      "case_id": "goal-prose-only-008",
+      "category": "goal_contract",
+      "goal": "Verify database backup consistency.",
+      "setup": {
+        "files": {
+          "backup.log": "Backup finished\n"
+        },
+        "fake_tools": [],
+        "script": [
+          {
+            "position": 1,
+            "title": "Claim verification in prose",
+            "tool_calls": [],
+            "final_output": "I verified it, everything looks completely consistent and fixed.",
+            "verification": "pass",
+            "goal_verification": {
+              "status": "blocked",
+              "summary": "Insufficient observable evidence: assistant self-claim rejected."
+            }
+          }
+        ]
+      },
+      "expected": {
+        "task_status": "blocked",
+        "ground_truth_success": false,
+        "expected_blocked": true
+      },
+      "max_steps": 2,
+      "max_model_calls": 2,
+      "max_tool_calls": 2,
+      "timeout_ms": 30000,
+      "tags": ["deterministic", "m23", "prose_only"]
+    }
+  ]
+}

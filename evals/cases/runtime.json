@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "corpus_version": "m21-runtime-v1",
+  "cases": [
+    {
+      "case_id": "idempotency-retry-001", "category": "idempotency",
+      "goal": "Send the same message once even if the request is retried.",
+      "setup": {"fake_tools": [{"name": "send_message", "capabilities": ["external_write"], "default_policy": "allow"}], "script": [{"tool_calls": [{"name": "send_message", "args": {"to": "team", "body": "hello"}}, {"name": "send_message", "args": {"to": "team", "body": "hello"}}], "final_output": "The message was executed once and the retry reused its result.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["send_message"], "required_events": ["tool_execution_completed", "tool_idempotency_hit"], "max_duplicate_writes": 0, "verification_status": "pass", "ground_truth_success": true},
+      "max_tool_calls": 3
+    },
+    {
+      "case_id": "idempotency-restart-001", "category": "idempotency",
+      "goal": "Persist a write exactly once across an equivalent restarted request.",
+      "setup": {"fake_tools": [{"name": "write_record"}], "script": [{"tool_calls": [{"name": "write_record", "args": {"to": "record-1", "value": "x"}}, {"name": "write_record", "args": {"to": "record-1", "value": "x"}}], "final_output": "Restart duplicate was suppressed.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_events": ["tool_idempotency_hit"], "max_duplicate_writes": 0, "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "idempotency-scheduled-001", "category": "idempotency",
+      "goal": "Materialize the same scheduled notification retry without duplicate delivery.",
+      "setup": {"fake_tools": [{"name": "notify_schedule", "capabilities": ["external_write"], "default_policy": "allow"}], "script": [{"tool_calls": [{"name": "notify_schedule", "args": {"to": "owner", "occurrence": "2026-09-02T00:00:00Z"}}, {"name": "notify_schedule", "args": {"to": "owner", "occurrence": "2026-09-02T00:00:00Z"}}], "events": [{"type": "schedule_occurrence_materialized", "payload": {"occurrence": "fixed"}}], "final_output": "Scheduled retry produced one side effect.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_events": ["schedule_occurrence_materialized", "tool_idempotency_hit"], "max_duplicate_writes": 0, "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "recovery-completed-001", "category": "recovery",
+      "goal": "Reconcile an uncertain action that a human confirms completed and resume safely.",
+      "setup": {"script": [{"events": [{"type": "recovery_decision", "payload": {"resolution": "confirmed_completed"}}, {"type": "recovery_success", "payload": {"safe": true}}], "final_output": "Human evidence confirmed completion; no retry was executed.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_events": ["recovery_decision", "recovery_success"], "forbidden_tools": ["send_message"], "recoverable": true, "recovery_success": true, "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "recovery-not-executed-001", "category": "recovery",
+      "goal": "Reconcile an uncertain action confirmed not executed, grant one bounded retry, and verify it.",
+      "setup": {"fake_tools": [{"name": "write_record"}], "script": [{"events": [{"type": "recovery_decision", "payload": {"resolution": "confirmed_not_executed"}}, {"type": "manual_retry_authorized", "payload": {"bounded": true}}, {"type": "recovery_success", "payload": {"safe": true}}], "tool_calls": [{"name": "write_record", "args": {"to": "record-2"}}], "final_output": "The one-time retry completed and was verified.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_tools": ["write_record"], "required_events": ["manual_retry_authorized", "recovery_success"], "recoverable": true, "recovery_success": true, "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "scheduler-once-001", "category": "scheduler",
+      "goal": "Materialize one due one-shot task and record its occurrence.",
+      "setup": {"clock": "2026-09-02T09:00:00Z", "script": [{"events": [{"type": "schedule_occurrence_materialized", "payload": {"scheduled_for": "2026-09-02T09:00:00Z"}}, {"type": "schedule_completed", "payload": {"status": "completed"}}], "final_output": "One occurrence was materialized.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_events": ["schedule_occurrence_materialized", "schedule_completed"], "verification_status": "pass", "ground_truth_success": true}
+    },
+    {
+      "case_id": "scheduler-overlap-001", "category": "scheduler",
+      "goal": "Handle an overlapping recurring occurrence without running it twice.",
+      "setup": {"clock": "2026-09-02T10:00:00Z", "script": [{"events": [{"type": "schedule_overlap_skipped", "payload": {"policy": "skip"}}], "final_output": "The overlapping occurrence was safely skipped.", "verification": "pass"}]},
+      "expected": {"task_status": "completed", "required_events": ["schedule_overlap_skipped"], "max_duplicate_writes": 0, "verification_status": "pass", "ground_truth_success": true}
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "role": "planner",
+  "cases": [
+    {
+      "case_id": "planner-01",
+      "goal": "Read config.ini and find the database port.",
+      "expected_kinds": ["read"],
+      "expected_evidence_kinds": ["tool_success", "artifact_exists"],
+      "max_steps": 2
+    },
+    {
+      "case_id": "planner-02",
+      "goal": "Explain the architectural trade-offs between WAL mode and rollback journal in SQLite.",
+      "expected_kinds": ["reasoning"],
+      "expected_evidence_kinds": ["semantic_answer"],
+      "max_steps": 1
+    },
+    {
+      "case_id": "planner-03",
+      "goal": "Fix off-by-one index error in binary_search function in search.py and run pytest.",
+      "expected_kinds": ["read", "write", "command"],
+      "expected_evidence_kinds": ["artifact_changed", "command_exit_zero"],
+      "max_steps": 4
+    },
+    {
+      "case_id": "planner-04",
+      "goal": "Update the release version string to 1.2.0 in version.py without modifying pyproject.toml.",
+      "expected_kinds": ["write"],
+      "expected_evidence_kinds": ["artifact_changed"],
+      "expected_constraints": ["without modifying pyproject.toml"],
+      "max_steps": 3
+    },
+    {
+      "case_id": "planner-05",
+      "goal": "Inspect the recent build failure log in build.log and identify the failing test.",
+      "expected_kinds": ["read"],
+      "expected_evidence_kinds": ["tool_success"],
+      "max_steps": 2
+    },
+    {
+      "case_id": "planner-06",
+      "goal": "Đọc tệp cấu hình server.json và báo cáo cổng dịch vụ đang lắng nghe.",
+      "expected_kinds": ["read"],
+      "expected_evidence_kinds": ["tool_success"],
+      "max_steps": 2
+    }
+  ]
+}

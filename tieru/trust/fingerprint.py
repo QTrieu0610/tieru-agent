@@ -39,6 +39,7 @@ def action_fingerprint(action: ActionRequest) -> str:
         "target": safe_value(action.target, "target"),
         "scope": safe_value(action.scope, "scope"),
         "resource_type": action.resource_type,
+        "arguments": safe_value(action.metadata.get("argument_identity", {})),
     }
     encoded = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()

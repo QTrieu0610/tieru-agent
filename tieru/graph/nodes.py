@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
+from tieru.context import ContextBuilder
 from tieru.graph.engine import Node, NodeFn, RouteFn
 from tieru.loop.agent import run_loop
 from tieru.tools.registry import ToolRegistry
@@ -34,10 +35,19 @@ def llm_node(name: str, prompt_template: str, out_key: str, *,
     Control flow never lives here — a router reads what this node wrote."""
 
     def run(state: dict) -> dict:
-        prompt = prompt_template.format(**{k: v for k, v in state.items()
-                                           if not k.startswith("_")})
-        response = client.messages.create(model=model, max_tokens=max_tokens,
-                                          messages=[{"role": "user", "content": prompt}])
+        values = {k: v for k, v in state.items() if not k.startswith("_")}
+        builder = ContextBuilder(max_block_bytes=12_000, max_data_bytes=16_000)
+        builder.add_control(
+            "Apply this configured graph operation template to the supplied DATA values: "
+            + prompt_template,
+            source="graph_node",
+        )
+        builder.add_data(str(values), source="graph_state")
+        assembly = builder.build()
+        response = client.messages.create(
+            model=model, max_tokens=max_tokens, system=assembly.system,
+            messages=list(assembly.messages),
+        )
         text = "".join(b.text for b in response.content if b.type == "text")
         return {out_key: text}
 
