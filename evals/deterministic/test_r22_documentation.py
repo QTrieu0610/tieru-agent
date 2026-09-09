@@ -246,13 +246,14 @@ def test_repository_example_does_not_pre_authorize_process_or_mcp():
     assert "explicit approval" in guide
 
 
-def test_readme_links_public_governance_and_attribution():
+def test_readme_links_public_governance_maintainer_and_license():
     text = _read(README)
     for target in (
         "CONTRIBUTING.md",
         "SECURITY.md",
         "CODE_OF_CONDUCT.md",
         "LICENSE",
-        "ShenSeanChen/waku-agent",
+        "https://github.com/QTrieu0610",
     ):
         assert target in text
+    assert "ShenSeanChen/waku-agent" not in text

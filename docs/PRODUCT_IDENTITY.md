@@ -92,14 +92,11 @@ The **Tieru Memory Graph** shipped in M6, **Tieru Trust Kernel** shipped in M7,
 - Treat Gemma 4 E2B as a verified local model target, never as the brand.
 - Keep compatibility identifiers exact in code and migration documentation.
 
-## Attribution rules
+## License and compatibility rules
 
-Tieru's upstream foundation is the MIT-licensed
-[`ShenSeanChen/waku-agent`](https://github.com/ShenSeanChen/waku-agent) project by
-Sean Chen. The license, copyright notice, repository history, historical
-artifacts, and compatibility identifiers must remain intact. Tieru-specific
-development and product direction may be described independently, but upstream
-work must not be rewritten as original Tieru authorship.
+The MIT license, copyright notices, repository history, historical artifacts,
+and compatibility identifiers must remain intact. Tieru-specific development
+and product direction must not misrepresent the authorship of inherited work.
 
 ## What Tieru does not claim after M13
 

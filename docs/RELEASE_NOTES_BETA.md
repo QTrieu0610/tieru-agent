@@ -104,8 +104,7 @@ Read [CONTRIBUTING.md](../CONTRIBUTING.md), the
 Bug reports and feature proposals belong in the repository's GitHub issue
 templates; sensitive vulnerabilities should use private security advisories.
 
-## Attribution
+## Maintainer and license
 
-Tieru is maintained by Vo Quang Trieu and derives from
-[ShenSeanChen/waku-agent](https://github.com/ShenSeanChen/waku-agent) by Sean
-Chen. The upstream provenance and MIT license are preserved in the repository.
+Tieru is maintained by Vo Quang Trieu and distributed under the repository's
+[MIT License](../LICENSE), which contains the applicable copyright notices.

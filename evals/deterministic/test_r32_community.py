@@ -207,7 +207,7 @@ def test_no_stale_or_invalid_public_commands_were_introduced():
     assert "Do not disable Trust or use an allow-all policy" in " ".join(text.split())
 
 
-def test_project_name_conduct_and_upstream_attribution_remain_correct():
+def test_project_name_conduct_and_license_attribution_remain_correct():
     conduct = _read(CODE_OF_CONDUCT)
     license_text = _read(REPO / "LICENSE")
     contributing = _read(CONTRIBUTING)
@@ -215,4 +215,5 @@ def test_project_name_conduct_and_upstream_attribution_remain_correct():
     assert "https://github.com/QTrieu0610" in conduct
     assert "Sean Chen (ShenSeanChen)" in license_text
     assert "Vo Quang Trieu (QTrieu0610)" in license_text
-    assert "ShenSeanChen/waku-agent" in contributing
+    assert "ShenSeanChen/waku-agent" not in contributing
+    assert "docs/RELEASING.md" in contributing

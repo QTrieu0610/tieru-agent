@@ -150,13 +150,7 @@ not promise commercial support or advertise an external support channel.
 Potential vulnerabilities follow [SECURITY.md](SECURITY.md), not a public issue
 containing exploit details.
 
-## Upstream provenance
-
-Tieru's foundation is the MIT-licensed
-[ShenSeanChen/waku-agent](https://github.com/ShenSeanChen/waku-agent). Fork
-history, attribution, and compatibility identifiers are preserved where
-required. Current maintenance, issue triage, and contribution decisions belong
-to Tieru and are documented in this repository.
+## Release process
 
 Maintainer release steps and versioning guidance live in
 [docs/RELEASING.md](docs/RELEASING.md).

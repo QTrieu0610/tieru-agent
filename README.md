@@ -444,17 +444,10 @@ python -m tieru.ops.release_gate
 See the [roadmap](docs/ROADMAP.md) for shipped work and remaining public-release
 gates.
 
-## Maintainer, Attribution, and License
+## Maintainer and License
 
 Tieru is developed and maintained by
 [Vo Quang Trieu](https://github.com/QTrieu0610).
 
-Tieru's upstream foundation is the MIT-licensed
-[ShenSeanChen/waku-agent](https://github.com/ShenSeanChen/waku-agent), created by
-[Sean Chen (ShenSeanChen)](https://github.com/ShenSeanChen). Tieru-specific
-development and product direction are maintained independently by Vo Quang
-Trieu. Fork history and compatibility identifiers are preserved where removing
-them would break users or misrepresent authorship.
-
-Tieru is distributed under the [MIT License](LICENSE), including the upstream
-and modifications notices.
+Tieru is distributed under the [MIT License](LICENSE). The license file contains
+the applicable copyright notices.
