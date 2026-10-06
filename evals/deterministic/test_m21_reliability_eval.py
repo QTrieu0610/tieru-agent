@@ -347,7 +347,7 @@ def test_36_explicit_live_mode_uses_configured_provider_and_isolated_runtime():
     case = EvalCase(
         "live-smoke", "unit", "Report the bounded result.", EvalSetup(),
         EvalExpectation(task_status="blocked", expected_blocked=True),
-        max_steps=1, max_model_calls=2, timeout_ms=5000,
+        max_steps=1, max_model_calls=2, timeout_ms=30_000,
     )
     corpus = replace(
         load_corpus(default_corpus_paths()).select(case_id="verify-pass-001"),

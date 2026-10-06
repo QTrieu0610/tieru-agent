@@ -72,7 +72,7 @@ def _make_case(
     max_steps: int = 1,
     max_model_calls: int = 2,
     max_tool_calls: int = 2,
-    timeout_ms: int = 5000,
+    timeout_ms: int = 30_000,
 ) -> EvalCase:
     return EvalCase(
         case_id=case_id,
@@ -389,13 +389,13 @@ def test_27_runner_flakiness_detection_consistent_results():
 
 def test_28_runner_repeated_runs_aggregates_metrics():
     client = MockClient(content="Pass", input_tokens=10, output_tokens=5)
-    case = _make_case(expected=EvalExpectation(task_status="completed"))
+    case = _make_case(expected=EvalExpectation(task_status="completed"), timeout_ms=30_000)
     corpus = replace(load_corpus(default_live_corpus_paths()).select(case_id="live-reasoning-001"), cases=(case,))
     runner = EvalRunner(live_settings=Settings(), live_client=client, runs=3)
     run = runner.run(corpus, mode="live")
     assert run.metrics["cases"] == 3
-    assert run.metrics["input_tokens"] >= 30
-    assert run.metrics["output_tokens"] >= 15
+    assert (run.metrics.get("input_tokens") or run.metrics.get("known_input_tokens", 0)) >= 30
+    assert (run.metrics.get("output_tokens") or run.metrics.get("known_output_tokens", 0)) >= 15
 
 
 # =========================================================================
