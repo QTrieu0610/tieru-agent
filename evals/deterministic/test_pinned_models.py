@@ -38,6 +38,8 @@ def home(tmp_path, monkeypatch):
     # so WAKU_PROVIDER must also be tracked to prevent leaking into later
     # tests (test_tool_trigger would inherit a stale provider and crash).
     monkeypatch.delenv("WAKU_PROVIDER", raising=False)
+    for t_var in ("TIERU_MAIN_PROVIDER", "TIERU_MAIN_MODEL", "TIERU_SMALL_PROVIDER", "TIERU_SMALL_MODEL", "TIERU_JUDGE_PROVIDER", "TIERU_PROVIDER", "TIERU_MODEL"):
+        monkeypatch.delenv(t_var, raising=False)
     return tmp_path
 
 

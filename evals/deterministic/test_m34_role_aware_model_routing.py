@@ -556,7 +556,7 @@ def test_23_configured_fallback():
 # 24. Fallback only for provider/infrastructure failure
 def test_24_fallback_only_for_provider_infrastructure_failure():
     from tieru.app import Tieru
-    s = load_settings()
+    s = load_settings({"profile": "ollama-gemma4-e2b"})
     t = Tieru(s)
     service = build_task_service(t)
     router = service.planner.model_router
@@ -632,7 +632,7 @@ def test_27_verifier_fail_cannot_trigger_alternate_verifier_until_pass():
 # 28. Executor fallback requires compatible tool support
 def test_28_executor_fallback_requires_compatible_tool_support():
     from tieru.app import Tieru
-    s = load_settings()
+    s = load_settings({"profile": "ollama-gemma4-e2b"})
     t = Tieru(s)
     service = build_task_service(t)
     router = service.planner.model_router
@@ -664,7 +664,7 @@ def test_29_tool_free_roles_remain_tools_empty():
 # 30. Executor receives same M24 tool subset
 def test_30_executor_receives_same_m24_tool_subset():
     from tieru.app import Tieru
-    s = load_settings()
+    s = load_settings({"profile": "ollama-gemma4-e2b"})
     t = Tieru(s)
     service_a = build_task_service(t, role_overrides={"executor": "gemma4:e2b"})
     service_b = build_task_service(t, role_overrides={"executor": "qwen2.5:1.5b"})
@@ -676,7 +676,7 @@ def test_30_executor_receives_same_m24_tool_subset():
 # 31. Candidate receives same M25 budget
 def test_31_candidate_receives_same_m25_budget():
     from tieru.app import Tieru
-    s = load_settings()
+    s = load_settings({"profile": "ollama-gemma4-e2b"})
     t = Tieru(s)
     limits = TaskLimits(max_steps_per_task=4, max_execution_steps_per_invocation=2)
     service_a = build_task_service(t, limits=limits, role_overrides={"executor": "gemma4:e2b"})
@@ -688,7 +688,7 @@ def test_31_candidate_receives_same_m25_budget():
 # 32. Routing cannot change Trust
 def test_32_routing_cannot_change_trust():
     from tieru.app import Tieru
-    s = load_settings()
+    s = load_settings({"profile": "ollama-gemma4-e2b"})
     t = Tieru(s)
     orig_trust = dict(t.settings.trust_policy)
     service = build_task_service(t, role_overrides={"executor": "qwen2.5:1.5b"})
@@ -714,7 +714,7 @@ def test_33_routing_cannot_change_goal_contract():
 # 34. Routing cannot bypass Goal Verification
 def test_34_routing_cannot_bypass_goal_verification():
     from tieru.app import Tieru
-    s = load_settings()
+    s = load_settings({"profile": "ollama-gemma4-e2b"})
     t = Tieru(s)
     service = build_task_service(t)
     assert service.executor.goal_verifier is not None
@@ -895,7 +895,7 @@ def test_47_no_model_download():
 # 48. No online self-modification
 def test_48_no_online_self_modification():
     from tieru.app import Tieru
-    s = load_settings()
+    s = load_settings({"profile": "ollama-gemma4-e2b"})
     t = Tieru(s)
     service = build_task_service(t)
     # Failure in step verification or execution does not alter the routing assignment
