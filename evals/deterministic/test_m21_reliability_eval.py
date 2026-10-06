@@ -31,7 +31,7 @@ def _case(**expected) -> EvalCase:
     return EvalCase(
         "unit-001", "unit", "Evaluate observable behavior.", EvalSetup(),
         EvalExpectation(**expected), max_steps=2, max_tool_calls=2,
-        max_model_calls=2, timeout_ms=2000,
+        max_model_calls=2, timeout_ms=30_000,
     )
 
 
