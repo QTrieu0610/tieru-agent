@@ -258,7 +258,7 @@ class Memory:
             lines.append("_none yet_")
         (self.settings.home / "MEMORY.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    def maybe_consolidate(self, notify=None) -> None:
+    def maybe_consolidate(self, notify=None, recalled: str = "") -> None:
         if self.settings.memory_write_policy != "consolidate":
             return
         new_facts = consolidation.consolidate_if_due(
@@ -268,6 +268,7 @@ class Memory:
             self.settings.consolidate_every,
             self.facts,
             self.episodes,
+            recalled=recalled,
         )
         if new_facts and notify:
             notify("consolidation", {"new_facts": new_facts})

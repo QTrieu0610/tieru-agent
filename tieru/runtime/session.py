@@ -117,6 +117,7 @@ class Session:
         self.memory = memory  # tieru.memory.Memory (None until Phase-2 wiring)
         self.session_id = session_id
         self.history: list[dict] = []
+        self.retrieved: str = ""
 
     def build_context(
         self, user_message: str, notify=None, *, memory_enabled: bool = True,
@@ -128,7 +129,11 @@ class Session:
         # The agent runs on your laptop, so it should know your laptop's clock.
         # Local time WITH the timezone name — enough to resolve "in 30 minutes".
         now = datetime.now().astimezone()
-        control = [WEB_RESEARCH_RULES, LOCAL_COMPUTER_RULES, CODING_RULES,
+        lookup_rule = (
+            "\nWhen a lookup of the same target (a channel, profile, company, file, or page found by name) "
+            "fails twice, stop guessing: use the exact URL, path, handle, or domain the user gave, or ask them for it."
+        )
+        control = [WEB_RESEARCH_RULES, LOCAL_COMPUTER_RULES, CODING_RULES, lookup_rule,
                  f"\nRight now it is {now:%A, %Y-%m-%d %H:%M} ({now:%Z}, UTC{now:%z}).",
                  # the agent should know its own brain — "what model are you?"
                  # is the first question every curious user asks
@@ -147,6 +152,7 @@ class Session:
             # default-on retrieval is slow and biases answers (see
             # memory/retrieval_gate.py for the why).
             retrieved = self.memory.gated_retrieve(user_message, notify=notify)
+            self.retrieved = retrieved or ""
             if retrieved:
                 builder.add_data(
                     retrieved,

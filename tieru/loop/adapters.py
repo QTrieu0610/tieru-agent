@@ -150,7 +150,10 @@ class OpenAIChatAdapter:
                 for tool in tools
             ]
             if tool_choice:
-                kwargs["tool_choice"] = tool_choice
+                if isinstance(tool_choice, dict) and tool_choice.get("type") == "none":
+                    kwargs["tool_choice"] = "none"
+                else:
+                    kwargs["tool_choice"] = tool_choice
         return kwargs
 
     def _call(self, kwargs: dict, **extra):

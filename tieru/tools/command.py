@@ -371,6 +371,19 @@ class CommandRunner:
     ) -> str:
         del _notify
         started = time.perf_counter()
+        if not argv or not isinstance(argv, list):
+            return CommandResult(
+                False, None, "", "", 0, False, False,
+                "command_invalid", "argv must be a non-empty list of strings.",
+            ).as_json()
+        try:
+            self._denied_executable(argv[0])
+            self._deny_package_install(argv)
+        except CommandPolicyError as exc:
+            return CommandResult(
+                False, None, "", "", 0, False, False,
+                exc.code, exc.safe_message,
+            ).as_json()
         environment = build_child_env()
         stdout = _BoundedCapture(self.policy.max_stdout_bytes)
         stderr = _BoundedCapture(self.policy.max_stderr_bytes)

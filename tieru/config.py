@@ -23,7 +23,7 @@ from dotenv import find_dotenv, load_dotenv
 from yaml.constructor import ConstructorError
 
 ROLE_NAMES = ("main", "small", "judge")
-PROTOCOLS = ("anthropic", "openai")
+PROTOCOLS = ("anthropic", "openai", "cli")
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/v1"
 VERIFIED_GEMMA_MODEL = "gemma4:e2b"
 
@@ -186,6 +186,18 @@ BUILTIN_PROVIDERS: dict[str, ProviderConfig] = {
     "ollama": ProviderConfig(
         "openai", "", DEFAULT_OLLAMA_URL, VERIFIED_GEMMA_MODEL, VERIFIED_GEMMA_MODEL,
         flagship=VERIFIED_GEMMA_MODEL, fast=VERIFIED_GEMMA_MODEL, keyless=True,
+    ),
+    "codex": ProviderConfig(
+        "cli", "", None, "gpt-4o", "gpt-4o-mini",
+        flagship="o3-mini", fast="gpt-4o-mini", keyless=True,
+    ),
+    "claude_code": ProviderConfig(
+        "cli", "", None, "claude-3-7-sonnet", "claude-3-5-haiku",
+        flagship="claude-3-7-sonnet", fast="claude-3-5-haiku", keyless=True,
+    ),
+    "antigravity": ProviderConfig(
+        "cli", "", None, "gemini-2.5-pro", "gemini-2.5-flash",
+        flagship="gemini-2.5-pro", fast="gemini-2.5-flash", keyless=True,
     ),
 }
 

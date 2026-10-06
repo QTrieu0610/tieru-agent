@@ -89,6 +89,11 @@ def get_client(settings: Settings, role: str = "main"):
             base_url=role_config.base_url,
             timeout=settings.llm_timeout,
         )
+    if role_config.protocol == "cli":
+        from tieru.loop.cli_adapters import SubscriptionCliAdapter
+
+        provider_name = "claude" if role_config.provider == "claude_code" else role_config.provider
+        return SubscriptionCliAdapter(provider=provider_name)
     raise ConfigError(
         f"Role '{role}' uses unsupported protocol '{role_config.protocol}'"
     )

@@ -17,6 +17,7 @@ from tieru.fabric.fallback import fallback_reason
 from tieru.fabric.verify import verify_result
 from tieru.loop.agent import LoopResult, Observer, run_loop
 from tieru.loop.models import ModelRouter
+from tieru.loop.trim import shrink_seen
 from tieru.ops.tracing import Tracer, compose
 from tieru.replay import ReplayRecorder, ReplayService, new_run_id
 from tieru.runtime.session import Session
@@ -303,7 +304,10 @@ class Tieru:
                 if (self.memory is not None
                         and (not self.settings.fabric_enabled
                              or decision.profile.memory_enabled)):
-                    self.memory.maybe_consolidate(notify=notify)
+                    self.memory.maybe_consolidate(
+                        notify=notify,
+                        recalled=getattr(self.session, "retrieved", ""),
+                    )
                     self.memory.export_markdown()   # keep MEMORY.md in sync
                 notify("final_output", {"output": result.reply, "reference": "chat_log"})
 
@@ -404,6 +408,7 @@ class Tieru:
             task_id=task_id,
             task_store=task_store,
             tool_choice_policy=tool_choice_policy,
+            trim=shrink_seen,
         )
 
     def _run_profiled_turn(
@@ -443,6 +448,7 @@ class Tieru:
             task_id=task_id,
             task_store=task_store,
             tool_choice_policy=kwargs.get("tool_choice_policy"),
+            trim=shrink_seen,
         )
 
     def _candidate_for(self, decision):

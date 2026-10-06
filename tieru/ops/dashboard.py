@@ -1072,6 +1072,33 @@ def shadow_action(payload: dict) -> dict:
 
 
 
+
+
+def connections_action(payload: dict) -> dict:
+    """Subscription CLI providers connection controls (Codex, Claude Code, Antigravity)."""
+    from tieru.providers.subscription import subscription_manager
+
+    action = str(payload.get("action") or "overview")
+    provider = str(payload.get("provider") or "")
+    if action == "overview":
+        return subscription_manager.overview(refresh=bool(payload.get("refresh")))
+    if action == "status":
+        return subscription_manager.status(provider, refresh=bool(payload.get("refresh")))
+    if action == "login":
+        return subscription_manager.start_login(provider, device_code=bool(payload.get("device_code")))
+    if action == "cancel":
+        subscription_manager.cancel_login(provider)
+        return {"ok": True, "message": f"Cancelled login for {provider}"}
+    if action == "logout":
+        return subscription_manager.logout(provider)
+    if action == "select":
+        return subscription_manager.select(
+            provider,
+            str(payload.get("model") or ""),
+            payload.get("effort"),
+        )
+    return {"error": f"unknown connections action {action}"}
+
 def events_since(cursor):
     """New trace events past `cursor` (a line count in today's trace file).
     Any gateway — browser, CLI, voice, Telegram — appends to this same file,
@@ -1149,6 +1176,10 @@ class Handler(BaseHTTPRequestHandler):
                     f"{COOKIE}={sid}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800"
                 )
             self._json({"csrf": csrf}, headers=headers)
+        elif self.path.startswith("/api/connections"):
+            from tieru.providers.subscription import subscription_manager
+
+            self._json(subscription_manager.overview(refresh="refresh=true" in self.path))
         elif self.path == "/api/approvals":
             dashboard_approvals.heartbeat()
             self._json({"approvals": dashboard_approvals.list_pending()})
@@ -1328,7 +1359,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {"/api/chat": None, "/api/memory": memory_action, "/api/forge": forge_action,
                   "/api/shadow": shadow_action,
                   "/api/capsule": capsule_action,
-                  "/api/settings": apply_settings,
+                  "/api/settings": apply_settings, "/api/connections": connections_action,
                   "/api/query": run_query, "/api/session": session_action, "/api/pin": pin_action,
                   "/api/reveal": lambda payload: reveal_path(str(payload.get("path", ""))),
                   "/api/compare/clear": compare_clear,

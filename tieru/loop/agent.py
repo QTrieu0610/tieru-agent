@@ -695,6 +695,7 @@ class LoopResult:
     iterations: int = 0
     run_id: str = ""
     state: dict[str, Any] = field(default_factory=dict)
+    limit_reached: bool = False
 
 
 def run_bounded_multi_step(
@@ -1241,6 +1242,64 @@ def run_bounded_multi_step(
     )
 
 
+LIMIT_REPLY = "(I hit my iteration limit before finishing — try breaking the request into smaller steps.)"
+LIMIT_NOTE = (
+    "You have reached the maximum number of tool iterations allowed for this turn. "
+    "Do NOT make any more tool calls. Using everything gathered in the conversation so far, "
+    "provide the best, most complete final answer possible to the user."
+)
+
+
+def _final_answer(
+    client: Any,
+    model: str,
+    system: str,
+    messages: list[dict],
+    tools: ToolRegistry,
+    max_tokens: int,
+    notify: Observer,
+    trim: Any,
+    iteration: int,
+    *,
+    provider: str = "",
+    role: str = "main",
+) -> str:
+    """The one tools-off call after max_iterations: its text, or "" when it failed."""
+    if trim is not None:
+        trim(messages)
+    try:
+        response = client.messages.create(
+            model=model,
+            system=f"{system}\n\n{LIMIT_NOTE}",
+            messages=messages,
+            tools=tools.schemas(),
+            tool_choice={"type": "none"},
+            max_tokens=max_tokens,
+        )
+    except Exception:
+        return ""
+    notify(
+        "llm",
+        {
+            "iteration": iteration,
+            "kind": "final",
+            "final_answer": True,
+            "stop_reason": getattr(response, "stop_reason", None),
+            "usage": {
+                "in": getattr(response.usage, "input_tokens", None) if getattr(response, "usage", None) is not None else None,
+                "out": getattr(response.usage, "output_tokens", None) if getattr(response, "usage", None) is not None else None,
+            },
+            "model": model,
+            "provider": provider,
+            "role": role,
+        },
+    )
+    text = [b for b in response.content if getattr(b, "type", "") == "text"]
+    if text:
+        messages.append({"role": "assistant", "content": text})
+    return "".join(b.text for b in text).strip()
+
+
 def run_loop(
     client: anthropic.Anthropic,
     model: str,
@@ -1258,6 +1317,7 @@ def run_loop(
     task_id: str | None = None,
     task_store: Any = None,
     tool_choice_policy: Any = None,
+    trim: Callable[[list[dict]], None] | None = None,
 ) -> LoopResult:
     """Run the default M5-M9 direct agent loop.
 
@@ -1518,6 +1578,9 @@ def run_loop(
                 proto = getattr(client, "protocol", "")
                 tool_choice = {"type": "any"} if proto == "anthropic" else "required"
 
+        if trim is not None and iteration > 1:
+            trim(messages)
+
         # Once evidence exists, buffer final text until source grounding/synthesis.
         if can_stream and not _requires_synthesis(result.tool_calls):
             try:
@@ -1632,7 +1695,21 @@ def run_loop(
 
     if _requires_synthesis(result.tool_calls):
         return finish("")
-    result.reply = "(I hit my iteration limit before finishing — try breaking the request into smaller steps.)"
+    result.limit_reached = True
+    final = _final_answer(
+        client,
+        model,
+        system,
+        messages,
+        tools,
+        max_tokens,
+        notify,
+        trim,
+        max_iterations + 1,
+        provider=provider,
+        role=role,
+    )
+    result.reply = final or LIMIT_REPLY
     notify(
         "error",
         {
