@@ -187,6 +187,9 @@ BUILTIN_PROVIDERS: dict[str, ProviderConfig] = {
         "openai", "", DEFAULT_OLLAMA_URL, VERIFIED_GEMMA_MODEL, VERIFIED_GEMMA_MODEL,
         flagship=VERIFIED_GEMMA_MODEL, fast=VERIFIED_GEMMA_MODEL, keyless=True,
     ),
+}
+
+SUBSCRIPTION_PROVIDERS: dict[str, ProviderConfig] = {
     "codex": ProviderConfig(
         "cli", "", None, "gpt-4o", "gpt-4o-mini",
         flagship="o3-mini", fast="gpt-4o-mini", keyless=True,
@@ -314,7 +317,7 @@ class Settings:
     role_routing_enabled: bool = False
     role_policy_path: Path | None = None
     providers: dict[str, ProviderConfig] = field(
-        default_factory=lambda: dict(BUILTIN_PROVIDERS)
+        default_factory=lambda: {**BUILTIN_PROVIDERS, **SUBSCRIPTION_PROVIDERS}
     )
     config_path: Path | None = None
     compatibility_mode: bool = False
@@ -600,7 +603,7 @@ def _config_path(overrides: dict[str, Any], used: set[str]) -> Path | None:
 
 
 def _providers(data: dict[str, Any]) -> dict[str, ProviderConfig]:
-    providers = dict(BUILTIN_PROVIDERS)
+    providers = {**BUILTIN_PROVIDERS, **SUBSCRIPTION_PROVIDERS}
     raw = data.get("providers") or {}
     if not isinstance(raw, dict):
         raise ConfigError("providers must be a mapping")

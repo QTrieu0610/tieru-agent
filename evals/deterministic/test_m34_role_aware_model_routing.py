@@ -881,7 +881,7 @@ def test_46_recommendation_dry_run(capsys):
 # 47. No model download
 def test_47_no_model_download():
     # Attempting to route to nonexistent model never triggers ollama pull or download
-    settings = load_settings()
+    settings = load_settings({"profile": "ollama-gemma4-e2b"})
     policy = ModelRolePolicy(
         schema_version=1,
         assignments={"executor": {"primary_provider": "ollama", "primary_model": "nonexistent:model"}},
