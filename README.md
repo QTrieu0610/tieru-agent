@@ -10,13 +10,11 @@ identity. It can run entirely through a local Ollama model; API keys and cloud
 providers are optional.
 
 - **Remember:** explicit long-term memory plus a typed Memory Graph.
-- **Act safely:** every requested tool action crosses the Trust Kernel.
-- **See what happened:** Replay records bounded execution metadata, not private
-  chain-of-thought.
-- **Reuse work:** Skill Forge drafts reviewed skills; Shadow can passively
-  suggest candidates and is disabled by default.
-- **Choose models:** Model Fabric plans execution and routes only among eligible,
-  explicitly configured models.
+- **Act safely:** every requested tool action crosses the Trust Kernel and Action Ledger.
+- **Execute durably:** multi-step tasks with Goal Contracts, deterministic checkpoints, and adaptive replanning.
+- **See what happened:** Replay records bounded execution metadata and cryptographic evidence digests.
+- **Reuse work:** Skill Forge drafts reviewed skills; Shadow can passively suggest candidates and is disabled by default.
+- **Choose models:** Model Fabric and cognitive role routing select among local Ollama, subscription CLI, or configured cloud models.
 - **Move your setup:** Capsule exports selective identity state without credentials.
 
 Gemma is not Tieru's identity. Ollama with `gemma4:e2b` is simply the verified,
@@ -258,6 +256,57 @@ excluded. Replay, Forge, and Shadow history are opt-in rather than part of the
 default portable identity. Capsule is an offline snapshot, not live sync. See
 [Capsule](docs/CAPSULE.md).
 
+## Durable Tasks: Goal-Governed Multi-Step Execution
+
+```bash
+tieru task create "audit dependencies and generate security report"
+tieru task run <task-id>
+tieru eval trace <task-id>
+```
+
+Durable tasks break complex workflows into transactional, evidence-producing
+execution steps:
+
+- **Goal Contracts:** Synthesizes objective success criteria, explicit negative
+  constraints, and step limits before execution begins.
+- **Action Ledger & Checkpoints:** Suppresses duplicate operations idempotently;
+  each step generates a durable `ExecutionCheckpoint` with SHA-256 evidence digests.
+- **Adaptive Replanning & Verifiers:** Evaluates observable checkpoints
+  deterministically, adapting remaining steps when divergence occurs.
+- See [Durable Tasks](docs/DURABLE_TASKS.md) and [Goal Contracts](docs/GOAL_CONTRACT.md).
+
+## Cognitive Roles & Subscription Providers
+
+```bash
+tieru model roles
+tieru eval roles
+```
+
+Tieru routes distinct cognitive roles (`planner`, `executor`, `replanner`,
+`verifier`, `contract`) to optimal models based on empirical capability profiling:
+
+- **Transparency:** Reports `configured_model`, `recommended_model`,
+  `effective_model`, and `actually_executed_model` separately.
+- **Subscription CLI Providers:** Routes through local, authenticated CLIs—**Claude Code**
+  (`claude`), **Codex / ChatGPT** (`codex`), or **Antigravity** (`antigravity`)—to run
+  frontier models without paying raw API token fees.
+- See [Role-Aware Model Routing](docs/ROLE_AWARE_MODEL_ROUTING.md) and
+  [Model Role Profiling](docs/MODEL_ROLE_PROFILING.md).
+
+## Scheduler, Recovery & Reliability Evals
+
+```bash
+tieru schedule create --name health --every 1h "run repository health check"
+tieru recovery list
+tieru eval run
+tieru eval compare baseline.json current.json
+```
+
+- **Scheduler & Recovery:** SQLite-backed recurrence (`tieru schedule tick`) and
+  explicit human retry permits (`tieru recovery resolve-execution`).
+- **Reliability Evals:** Isolated 14-case benchmark measuring completion rates and
+  safety invariants. See [Reliability Evaluation](docs/RELIABILITY_EVAL.md).
+
 ## Core Capabilities
 
 | Pillar | What is shipped |
@@ -269,41 +318,37 @@ default portable identity. Capsule is an offline snapshot, not live sync. See
 | Shadow | Disabled-by-default passive workflow suggestions from successful Replay structure |
 | Model Fabric | Execution profiles plus policy-first selection among configured candidates |
 | Capsule | Selective, integrity-checked, offline identity export and preview-first import |
+| Durable Tasks | Transactional, checkpointed multi-step plans with Goal Contracts and adaptive replanning |
+| Action Ledger | Deterministic duplicate suppression and idempotent side-effect control in SQLite |
+| Execution Checkpoints | SHA-256 evidence digests, attribution tracking, and deterministic step verifiers |
+| Context Firewall | Structural boundary separating CONTROL, USER intent, and untrusted DATA |
+| Cognitive Role Routing | Role-aware model selection (`planner`, `executor`, `verifier`) backed by empirical profiling |
+| Subscription CLI Providers | Zero-cost integration with local Claude Code, Codex, and Antigravity subscriptions |
+| Persistent Scheduler | SQLite-backed interval and one-shot schedules with crash-safe ticks |
+| Human Recovery | Explicit human resolution permits for ambiguous executions and side effects |
+| Capability Discovery | Multi-stage tool routing and schema projection without context explosion |
+| Reliability Scorecard | Isolated 14-case live evaluation corpus with strict mathematical invariants |
 
 Tieru also ships the interactive runtime, local dashboard, procedural skills,
 Memory stores, optional browser tools, optional gateways, and MCP integration.
 
-## Telegram
+## Gateways: Multi-Platform Personal Assistant
 
-Telegram is a gateway to the same Tieru runtime; it does not create a second
-agent implementation. Install the existing optional dependency:
+Tieru connects to multiple chat and voice interfaces as gateways to the same
+runtime without creating separate agent silos:
 
-```bash
-pip install -e ".[telegram]"
-```
+- **Telegram:** `tieru telegram` — isolated user sessions, document ingestion.
+- **Discord:** `tieru discord` — bot token with guild/channel allowlists.
+- **WhatsApp:** `tieru whatsapp` — personal automation with phone allowlists.
+- **Voice:** `tieru voice` — real-time local audio loop with STT and TTS.
 
-Create a bot with BotFather, then configure its token and one or more numeric
-Telegram user IDs. The legacy single-user setting and the comma-separated
-multi-user setting can be used together:
+All gateways fail closed until required sender allowlists are configured.
 
-```env
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_ALLOWED_USER=
-TELEGRAM_ALLOWED_USERS=123456789
-```
+## Bundled Skills & Token Discipline
 
-Start the gateway and open the bot in Telegram:
-
-```bash
-python -m tieru telegram
-```
-
-Then send `/start` and chat normally. Each allowed Telegram user gets an
-isolated conversation session; `/new` clears only that working conversation,
-not long-term memory. Text, Markdown, source-code, CSV, JSON, and other UTF-8
-text documents are supported directly. Images and binary documents such as PDF
-require an enabled Tieru/MCP reader with the relevant capability; otherwise the
-bot reports the limitation instead of pretending it inspected the file.
+- **Ponytail (`skills/community/ponytail`)**: Minimalist coding token discipline (YAGNI, stdlib-first).
+- **Meeting Prep & Scheduling (`skills/schedule-meeting`)**: Calendar interaction and prep workflows.
+- **Weekly Brief (`skills/weekly-brief`)**: Morning and weekly priority synthesis.
 
 ## How Tieru Works
 
@@ -415,14 +460,11 @@ tieru doctor
 
 ### Architecture and shipped pillars
 
-- [Architecture](docs/architecture.md)
-- [Memory Graph](docs/MEMORY_GRAPH.md)
-- [Trust Kernel](docs/TRUST_KERNEL.md)
-- [Replay](docs/REPLAY.md)
-- [Skill Forge](docs/SKILL_FORGE.md)
-- [Shadow](docs/SHADOW.md)
-- [Model Fabric](docs/MODEL_FABRIC.md)
-- [Capsule](docs/CAPSULE.md)
+- [Architecture](docs/architecture.md) | [Memory Graph](docs/MEMORY_GRAPH.md) | [Trust Kernel](docs/TRUST_KERNEL.md) | [Replay](docs/REPLAY.md)
+- [Skill Forge](docs/SKILL_FORGE.md) | [Shadow](docs/SHADOW.md) | [Model Fabric](docs/MODEL_FABRIC.md) | [Capsule](docs/CAPSULE.md)
+- [Durable Tasks](docs/DURABLE_TASKS.md) | [Goal Contract](docs/GOAL_CONTRACT.md) | [Action Ledger](docs/ACTION_LEDGER.md)
+- [Checkpoints](docs/RUNTIME_ATTRIBUTION_AND_CHECKPOINTS.md) | [Context Firewall](docs/CONTEXT_FIREWALL.md) | [Role Routing](docs/ROLE_AWARE_MODEL_ROUTING.md)
+- [Scheduler](docs/SCHEDULER.md) | [Human Recovery](docs/RECOVERY.md) | [Reliability Evaluation](docs/RELIABILITY_EVAL.md)
 
 Historical and development notes remain under `docs/`; they are not required for
 the five-minute path.
